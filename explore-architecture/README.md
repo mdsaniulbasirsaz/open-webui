@@ -10,6 +10,62 @@ It is intentionally verbose to serve as a navigation map for new contributors.
 - UI routes use SvelteKit file-based routing under `src/routes/`.
 - UI shared code lives in `src/lib/`.
 
+## Branding / Renaming the UI (Synapse)
+
+If you want the frontend app name, browser tab title, and other UI labels to show **Synapse**, there are a few
+different "name sources" to understand:
+
+- **Runtime name (preferred)**: the backend returns `config.name`, and the frontend sets `WEBUI_NAME` from it in
+  `src/routes/+layout.svelte`. This is what most pages and `<title>` tags use.
+- **Build-time fallback name**: `src/lib/constants.ts` exports `APP_NAME`, which initializes `WEBUI_NAME` before the
+  backend config loads (and is also used in some places when running frontend-only).
+- **Hardcoded strings**: some UI strings still contain literal `Open WebUI` and must be updated manually.
+
+### 1) Set the global app name to `Synapse`
+
+- Backend: set `WEBUI_NAME` in your environment (or `open-webui/.env` if you load it in your runtime):
+  - `WEBUI_NAME='Synapse'`
+- Frontend fallback: set `APP_NAME` in `src/lib/constants.ts`:
+  - `export const APP_NAME = 'Synapse';`
+
+Note: the backend currently appends ` (Open WebUI)` when `WEBUI_NAME` is customized. If you want the UI to show only
+`Synapse`, update `backend/open_webui/env.py` to remove that suffix logic.
+
+### 2) Browser tab title (including per-page titles)
+
+- Default HTML title (fallback only): `src/app.html` -> `<title>Synapse</title>`
+- Main app title/meta tags: `src/routes/+layout.svelte` uses `$WEBUI_NAME` for:
+  - `<title>{$WEBUI_NAME}</title>`
+  - `apple-mobile-web-app-title`, `description`, etc.
+- Per-chat page titles: `src/routes/s/[id]+page.svelte` and `src/lib/components/chat/Chat.svelte` build titles like:
+  - `Chat Title - ${$WEBUI_NAME}`
+
+### 3) Navbar title / visible UI labels
+
+Most visible "app name" usage should come from `$WEBUI_NAME`. If you still see `Open WebUI` in the UI, it is usually
+coming from hardcoded strings (not the navbar component itself).
+
+Common places to update:
+
+- Notifications: `src/routes/+layout.svelte` contains hardcoded `Open WebUI` in notification titles.
+- Channel page `<title>` tags: `src/lib/components/channel/Channel.svelte` contains hardcoded `Open WebUI` in titles.
+- Other UI copy: search for `Open WebUI` across the frontend and decide whether to:
+  - Replace with `$WEBUI_NAME` (preferred, keeps it configurable), or
+  - Replace with the literal `Synapse` (hard rebrand).
+
+Search command (repo root):
+
+- `rg -n "Open WebUI" open-webui/src -S`
+
+### 4) PWA / installable app name (manifest)
+
+The manifest is served by the backend endpoint `backend/open_webui/main.py` at `/manifest.json` and uses
+`app.state.WEBUI_NAME`. Once `WEBUI_NAME` is set to `Synapse`, the installed PWA name should follow automatically.
+
+If you also rely on the static manifest file, update:
+
+- `static/static/site.webmanifest` -> `"name"` / `"short_name"`
+
 ## Top-Level Repository Structure
 
 - `.dockerignore` - File

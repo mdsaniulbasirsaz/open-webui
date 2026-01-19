@@ -868,8 +868,8 @@
 				>
 					<img
 						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
-						class="sidebar-new-chat-icon size-6 rounded-full"
+						src="/static/favicon.png"
+						class="sidebar-new-chat-icon size-7 rounded-full"
 						alt=""
 					/>
 				</a>
@@ -879,7 +879,8 @@
 						id="sidebar-webui-name"
 						class=" self-center font-medium text-gray-850 dark:text-white font-primary"
 					>
-						{$WEBUI_NAME}
+						<!-- {$WEBUI_NAME} -->
+						<h1 class="text-2xl">Synapse</h1>
 					</div>
 				</a>
 				<Tooltip
