@@ -1,0 +1,977 @@
+# OpenWebUI Architecture Reference
+
+This document expands the repository structure and describes what each folder and file is for.
+It is intentionally verbose to serve as a navigation map for new contributors.
+
+## Conventions
+
+- Paths are relative to the repository root `open-webui/`.
+- Generated folders are labeled and usually not edited by hand.
+- UI routes use SvelteKit file-based routing under `src/routes/`.
+- UI shared code lives in `src/lib/`.
+
+## Top-Level Repository Structure
+
+- `.dockerignore` - File
+- `.env` - Local environment variables
+- `.env.example` - Example environment file
+- `.eslintignore` - ESLint ignore rules
+- `.eslintrc.cjs` - ESLint configuration
+- `.gitattributes` - Git attributes
+- `.github/` - GitHub workflows and metadata
+- `.gitignore` - Git ignore rules
+- `.npmrc` - NPM configuration
+- `.prettierignore` - Prettier ignore rules
+- `.prettierrc` - Prettier configuration
+- `.svelte-kit/` - SvelteKit build artifacts (generated)
+- `backend/` - Python backend services, APIs, and data storage
+- `banner.png` - Project banner image
+- `build/` - Frontend build output (generated)
+- `CHANGELOG.md` - Release history
+- `CODE_OF_CONDUCT.md` - Contributor behavior guidelines
+- `confirm_remove.sh` - Safety wrapper for destructive actions
+- `contribution_stats.py` - Contributor stats helper
+- `CONTRIBUTOR_LICENSE_AGREEMENT` - Contributor license agreement
+- `cypress/` - Cypress end-to-end tests
+- `cypress.config.ts` - TypeScript module
+- `demo.png` - Project demo image
+- `docker-compose.a1111-test.yaml` - Automatic1111 test stack
+- `docker-compose.amdgpu.yaml` - AMD GPU compose stack
+- `docker-compose.api.yaml` - API-only compose stack
+- `docker-compose.data.yaml` - Data volume compose stack
+- `docker-compose.gpu.yaml` - GPU-enabled compose stack
+- `docker-compose.otel.yaml` - OpenTelemetry compose stack
+- `docker-compose.playwright.yaml` - Playwright testing stack
+- `docker-compose.yaml` - Default docker-compose stack
+- `Dockerfile` - Container build for the full app
+- `docs/` - Project documentation
+- `explore-architecture/` - Architecture notes and diagrams
+- `hatch_build.py` - Python build helper
+- `i18next-parser.config.ts` - TypeScript module
+- `LICENSE` - Primary project license
+- `LICENSE_HISTORY` - License history
+- `LICENSE_NOTICE` - Third-party license notices
+- `Makefile` - Convenience build and dev commands
+- `node_modules/` - Frontend dependencies (generated)
+- `package-lock.json` - Locked frontend dependencies
+- `package.json` - Frontend package manifest and scripts
+- `postcss.config.js` - PostCSS configuration
+- `pyproject.toml` - Python build and tooling configuration
+- `README.md` - Project overview and setup instructions
+- `run-compose.sh` - Docker compose runner
+- `run-ollama-docker.sh` - Ollama docker helper
+- `run.sh` - Linux/Mac dev runner
+- `scripts/` - Dev and CI helper scripts
+- `src/` - SvelteKit frontend source
+- `static/` - Static assets served by the frontend
+- `svelte.config.js` - SvelteKit configuration
+- `tailwind.config.js` - Tailwind CSS configuration
+- `test/` - Test fixtures and utilities
+- `TROUBLESHOOTING.md` - File
+- `tsconfig.json` - TypeScript configuration
+- `update_ollama_models.sh` - Ollama model update helper
+- `uv.lock` - Python dependency lockfile
+- `vite.config.ts` - Vite bundler configuration
+
+## Backend (Python) Structure
+
+- `backend/` - Backend services and runtime entrypoints
+- `backend/.dockerignore` - File
+- `backend/.gitignore` - File
+- `backend/.webui_secret_key` - File
+- `backend/data/` - Backend data volume (local runtime data)
+- `backend/dev.sh` - Backend dev runner
+- `backend/open_webui/` - Backend application package
+- `backend/README.md` - Backend-specific documentation
+- `backend/requirements-min.txt` - Python dependency list
+- `backend/requirements.txt` - Python dependency list
+- `backend/start.sh` - Unix start script
+- `backend/start_windows.bat` - Windows start script
+- `backend/venv/` - Python virtual environment (generated)
+
+### Backend Package: backend/open_webui/
+
+- `backend/open_webui/__init__.py` - Python package marker
+- `backend/open_webui/__pycache__/` - Python bytecode cache (generated)
+- `backend/open_webui/alembic.ini` - Alembic configuration
+- `backend/open_webui/config.py` - Backend configuration
+- `backend/open_webui/constants.py` - Backend constants
+- `backend/open_webui/data/` - Backend-managed data
+- `backend/open_webui/env.py` - Environment and runtime setup
+- `backend/open_webui/functions.py` - Tool/function definitions
+- `backend/open_webui/internal/` - Internal services and helpers
+- `backend/open_webui/main.py` - FastAPI application entrypoint
+- `backend/open_webui/migrations/` - Alembic migration scripts
+- `backend/open_webui/models/` - Database models and schemas
+- `backend/open_webui/retrieval/` - Retrieval pipelines and integrations
+- `backend/open_webui/routers/` - FastAPI routers and route handlers
+- `backend/open_webui/socket/` - WebSocket handlers
+- `backend/open_webui/static/` - Backend-served static files
+- `backend/open_webui/storage/` - Storage backends and adapters
+- `backend/open_webui/tasks.py` - Background tasks
+- `backend/open_webui/test/` - Backend tests
+- `backend/open_webui/tools/` - Tools and tool integrations
+- `backend/open_webui/utils/` - Shared helpers and utilities
+
+## Frontend (UI) Structure
+
+- `src/` - SvelteKit UI source root
+- `src/app.html` - SvelteKit HTML template
+- `src/app.css` - Global CSS
+- `src/tailwind.css` - Tailwind entry stylesheet
+- `src/app.d.ts` - App-level TypeScript declarations
+
+### Frontend Routes (src/routes)
+
+- `src/routes/(app)/` - Route group
+- `src/routes/(app)/+layout.svelte` - Layout UI for this route scope
+- `src/routes/(app)/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/` - Route folder
+- `src/routes/(app)/admin/+layout.svelte` - Layout UI for this route scope
+- `src/routes/(app)/admin/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/analytics/` - Route folder
+- `src/routes/(app)/admin/analytics/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/analytics/[tab]/` - Route folder
+- `src/routes/(app)/admin/analytics/[tab]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/evaluations/` - Route folder
+- `src/routes/(app)/admin/evaluations/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/evaluations/[tab]/` - Route folder
+- `src/routes/(app)/admin/evaluations/[tab]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/functions/` - Route folder
+- `src/routes/(app)/admin/functions/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/functions/create/` - Route folder
+- `src/routes/(app)/admin/functions/create/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/functions/edit/` - Route folder
+- `src/routes/(app)/admin/functions/edit/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/settings/` - Route folder
+- `src/routes/(app)/admin/settings/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/settings/[tab]/` - Route folder
+- `src/routes/(app)/admin/settings/[tab]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/users/` - Route folder
+- `src/routes/(app)/admin/users/+page.svelte` - Page UI for this route
+- `src/routes/(app)/admin/users/[tab]/` - Route folder
+- `src/routes/(app)/admin/users/[tab]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/c/` - Route folder
+- `src/routes/(app)/c/[id]/` - Route folder
+- `src/routes/(app)/c/[id]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/channels/` - Route folder
+- `src/routes/(app)/channels/[id]/` - Route folder
+- `src/routes/(app)/channels/[id]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/home/` - Route folder
+- `src/routes/(app)/home/+layout.svelte` - Layout UI for this route scope
+- `src/routes/(app)/home/+page.svelte` - Page UI for this route
+- `src/routes/(app)/notes/` - Route folder
+- `src/routes/(app)/notes/+layout.svelte` - Layout UI for this route scope
+- `src/routes/(app)/notes/+page.svelte` - Page UI for this route
+- `src/routes/(app)/notes/[id]/` - Route folder
+- `src/routes/(app)/notes/[id]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/notes/new/` - Route folder
+- `src/routes/(app)/notes/new/+page.svelte` - Page UI for this route
+- `src/routes/(app)/playground/` - Route folder
+- `src/routes/(app)/playground/+layout.svelte` - Layout UI for this route scope
+- `src/routes/(app)/playground/+page.svelte` - Page UI for this route
+- `src/routes/(app)/playground/completions/` - Route folder
+- `src/routes/(app)/playground/completions/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/` - Route folder
+- `src/routes/(app)/workspace/+layout.svelte` - Layout UI for this route scope
+- `src/routes/(app)/workspace/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/functions/` - Route folder
+- `src/routes/(app)/workspace/functions/create/` - Route folder
+- `src/routes/(app)/workspace/functions/create/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/knowledge/` - Route folder
+- `src/routes/(app)/workspace/knowledge/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/knowledge/[id]/` - Route folder
+- `src/routes/(app)/workspace/knowledge/[id]/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/knowledge/create/` - Route folder
+- `src/routes/(app)/workspace/knowledge/create/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/models/` - Route folder
+- `src/routes/(app)/workspace/models/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/models/create/` - Route folder
+- `src/routes/(app)/workspace/models/create/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/models/edit/` - Route folder
+- `src/routes/(app)/workspace/models/edit/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/prompts/` - Route folder
+- `src/routes/(app)/workspace/prompts/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/prompts/create/` - Route folder
+- `src/routes/(app)/workspace/prompts/create/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/prompts/edit/` - Route folder
+- `src/routes/(app)/workspace/prompts/edit/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/tools/` - Route folder
+- `src/routes/(app)/workspace/tools/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/tools/create/` - Route folder
+- `src/routes/(app)/workspace/tools/create/+page.svelte` - Page UI for this route
+- `src/routes/(app)/workspace/tools/edit/` - Route folder
+- `src/routes/(app)/workspace/tools/edit/+page.svelte` - Page UI for this route
+- `src/routes/+error.svelte` - Error UI for this route
+- `src/routes/+layout.js` - Layout load function for this route scope
+- `src/routes/+layout.svelte` - Layout UI for this route scope
+- `src/routes/auth/` - Route folder
+- `src/routes/auth/+page.svelte` - Page UI for this route
+- `src/routes/error/` - Route folder
+- `src/routes/error/+page.svelte` - Page UI for this route
+- `src/routes/s/` - Route folder
+- `src/routes/s/[id]/` - Route folder
+- `src/routes/s/[id]/+page.svelte` - Page UI for this route
+- `src/routes/watch/` - Route folder
+- `src/routes/watch/+page.svelte` - Page UI for this route
+
+### Frontend Library (src/lib)
+
+- `src/lib/apis/` - API client wrappers
+- `src/lib/components/` - Svelte UI components
+- `src/lib/constants/` - Frontend constants and config
+- `src/lib/constants.ts` - Top-level UI constants
+- `src/lib/dayjs.js` - Date helper setup
+- `src/lib/emoji-groups.json` - Emoji group metadata
+- `src/lib/emoji-shortcodes.json` - Emoji shortcode map
+- `src/lib/i18n/` - Localization setup and strings
+- `src/lib/index.ts` - Library exports
+- `src/lib/pyodide/` - Pyodide integration helpers
+- `src/lib/shortcuts.ts` - Keyboard shortcut definitions
+- `src/lib/stores/` - Svelte stores (state)
+- `src/lib/types/` - Shared TypeScript types
+- `src/lib/utils/` - Utility helpers
+- `src/lib/workers/` - Web workers
+
+#### UI API Modules (src/lib/apis)
+
+- `src/lib/apis/audio/index.ts` - API wrapper for index
+- `src/lib/apis/auths/index.ts` - API wrapper for index
+- `src/lib/apis/channels/index.ts` - API wrapper for index
+- `src/lib/apis/chats/index.ts` - API wrapper for index
+- `src/lib/apis/configs/index.ts` - API wrapper for index
+- `src/lib/apis/evaluations/index.ts` - API wrapper for index
+- `src/lib/apis/files/index.ts` - API wrapper for index
+- `src/lib/apis/folders/index.ts` - API wrapper for index
+- `src/lib/apis/functions/index.ts` - API wrapper for index
+- `src/lib/apis/groups/index.ts` - API wrapper for index
+- `src/lib/apis/images/index.ts` - API wrapper for index
+- `src/lib/apis/index.ts` - API wrapper for index
+- `src/lib/apis/knowledge/index.ts` - API wrapper for index
+- `src/lib/apis/memories/index.ts` - API wrapper for index
+- `src/lib/apis/models/index.ts` - API wrapper for index
+- `src/lib/apis/notes/index.ts` - API wrapper for index
+- `src/lib/apis/ollama/index.ts` - API wrapper for index
+- `src/lib/apis/openai/index.ts` - API wrapper for index
+- `src/lib/apis/prompts/index.ts` - API wrapper for index
+- `src/lib/apis/retrieval/index.ts` - API wrapper for index
+- `src/lib/apis/streaming/index.ts` - API wrapper for index
+- `src/lib/apis/tools/index.ts` - API wrapper for index
+- `src/lib/apis/users/index.ts` - API wrapper for index
+- `src/lib/apis/utils/index.ts` - API wrapper for index
+
+#### UI Stores (src/lib/stores)
+
+- `src/lib/stores/index.ts` - Svelte store definitions
+
+#### UI Utilities (src/lib/utils)
+
+- `src/lib/utils/_template_old.ts` - Legacy template utility
+- `src/lib/utils/audio.ts` - Audio helpers
+- `src/lib/utils/characters/` - Utility submodule
+- `src/lib/utils/characters/index.ts` - Utility exports
+- `src/lib/utils/google-drive-picker.ts` - Google Drive picker integration
+- `src/lib/utils/index.ts` - Utility exports
+- `src/lib/utils/marked/` - Utility submodule
+- `src/lib/utils/marked/citation-extension.ts` - Markdown extension for rendering
+- `src/lib/utils/marked/extension.ts` - Markdown extension for rendering
+- `src/lib/utils/marked/footnote-extension.ts` - Markdown extension for rendering
+- `src/lib/utils/marked/katex-extension.ts` - Markdown extension for rendering
+- `src/lib/utils/marked/mention-extension.ts` - Markdown extension for rendering
+- `src/lib/utils/marked/strikethrough-extension.ts` - Markdown extension for rendering
+- `src/lib/utils/onedrive-file-picker.ts` - OneDrive picker integration
+- `src/lib/utils/text-scale.ts` - Text scaling utilities
+- `src/lib/utils/transitions/` - Utility submodule
+- `src/lib/utils/transitions/index.ts` - Utility exports
+
+#### UI Workers (src/lib/workers)
+
+- `src/lib/workers/kokoro.worker.ts` - Web worker for background processing
+- `src/lib/workers/KokoroWorker.ts` - Web worker for background processing
+- `src/lib/workers/pyodide.worker.ts` - Web worker for background processing
+
+#### UI Types (src/lib/types)
+
+- `src/lib/types/index.ts` - TypeScript types
+
+#### Pyodide (src/lib/pyodide)
+
+- `src/lib/pyodide/pyodideKernel.ts` - Pyodide integration code
+- `src/lib/pyodide/pyodideKernel.worker.ts` - Pyodide integration code
+
+#### Localization (src/lib/i18n)
+
+- `src/lib/i18n/index.ts` - i18n entrypoint
+- `src/lib/i18n/locales/` - Localization folder
+- `src/lib/i18n/locales/ar/` - Localization folder
+- `src/lib/i18n/locales/ar/translation.json` - Translation strings
+- `src/lib/i18n/locales/ar-BH/` - Localization folder
+- `src/lib/i18n/locales/ar-BH/translation.json` - Translation strings
+- `src/lib/i18n/locales/bg-BG/` - Localization folder
+- `src/lib/i18n/locales/bg-BG/translation.json` - Translation strings
+- `src/lib/i18n/locales/bn-BD/` - Localization folder
+- `src/lib/i18n/locales/bn-BD/translation.json` - Translation strings
+- `src/lib/i18n/locales/bo-TB/` - Localization folder
+- `src/lib/i18n/locales/bo-TB/translation.json` - Translation strings
+- `src/lib/i18n/locales/bs-BA/` - Localization folder
+- `src/lib/i18n/locales/bs-BA/translation.json` - Translation strings
+- `src/lib/i18n/locales/ca-ES/` - Localization folder
+- `src/lib/i18n/locales/ca-ES/translation.json` - Translation strings
+- `src/lib/i18n/locales/ceb-PH/` - Localization folder
+- `src/lib/i18n/locales/ceb-PH/translation.json` - Translation strings
+- `src/lib/i18n/locales/cs-CZ/` - Localization folder
+- `src/lib/i18n/locales/cs-CZ/translation.json` - Translation strings
+- `src/lib/i18n/locales/da-DK/` - Localization folder
+- `src/lib/i18n/locales/da-DK/translation.json` - Translation strings
+- `src/lib/i18n/locales/de-DE/` - Localization folder
+- `src/lib/i18n/locales/de-DE/translation.json` - Translation strings
+- `src/lib/i18n/locales/dg-DG/` - Localization folder
+- `src/lib/i18n/locales/dg-DG/translation.json` - Translation strings
+- `src/lib/i18n/locales/el-GR/` - Localization folder
+- `src/lib/i18n/locales/el-GR/translation.json` - Translation strings
+- `src/lib/i18n/locales/en-GB/` - Localization folder
+- `src/lib/i18n/locales/en-GB/translation.json` - Translation strings
+- `src/lib/i18n/locales/en-US/` - Localization folder
+- `src/lib/i18n/locales/en-US/translation.json` - Translation strings
+- `src/lib/i18n/locales/es-ES/` - Localization folder
+- `src/lib/i18n/locales/es-ES/translation.json` - Translation strings
+- `src/lib/i18n/locales/et-EE/` - Localization folder
+- `src/lib/i18n/locales/et-EE/translation.json` - Translation strings
+- `src/lib/i18n/locales/eu-ES/` - Localization folder
+- `src/lib/i18n/locales/eu-ES/translation.json` - Translation strings
+- `src/lib/i18n/locales/fa-IR/` - Localization folder
+- `src/lib/i18n/locales/fa-IR/translation.json` - Translation strings
+- `src/lib/i18n/locales/fi-FI/` - Localization folder
+- `src/lib/i18n/locales/fi-FI/translation.json` - Translation strings
+- `src/lib/i18n/locales/fr-CA/` - Localization folder
+- `src/lib/i18n/locales/fr-CA/translation.json` - Translation strings
+- `src/lib/i18n/locales/fr-FR/` - Localization folder
+- `src/lib/i18n/locales/fr-FR/translation.json` - Translation strings
+- `src/lib/i18n/locales/gl-ES/` - Localization folder
+- `src/lib/i18n/locales/gl-ES/translation.json` - Translation strings
+- `src/lib/i18n/locales/he-IL/` - Localization folder
+- `src/lib/i18n/locales/he-IL/translation.json` - Translation strings
+- `src/lib/i18n/locales/hi-IN/` - Localization folder
+- `src/lib/i18n/locales/hi-IN/translation.json` - Translation strings
+- `src/lib/i18n/locales/hr-HR/` - Localization folder
+- `src/lib/i18n/locales/hr-HR/translation.json` - Translation strings
+- `src/lib/i18n/locales/hu-HU/` - Localization folder
+- `src/lib/i18n/locales/hu-HU/translation.json` - Translation strings
+- `src/lib/i18n/locales/id-ID/` - Localization folder
+- `src/lib/i18n/locales/id-ID/translation.json` - Translation strings
+- `src/lib/i18n/locales/ie-GA/` - Localization folder
+- `src/lib/i18n/locales/ie-GA/translation.json` - Translation strings
+- `src/lib/i18n/locales/it-IT/` - Localization folder
+- `src/lib/i18n/locales/it-IT/translation.json` - Translation strings
+- `src/lib/i18n/locales/ja-JP/` - Localization folder
+- `src/lib/i18n/locales/ja-JP/translation.json` - Translation strings
+- `src/lib/i18n/locales/ka-GE/` - Localization folder
+- `src/lib/i18n/locales/ka-GE/translation.json` - Translation strings
+- `src/lib/i18n/locales/kab-DZ/` - Localization folder
+- `src/lib/i18n/locales/kab-DZ/translation.json` - Translation strings
+- `src/lib/i18n/locales/ko-KR/` - Localization folder
+- `src/lib/i18n/locales/ko-KR/translation.json` - Translation strings
+- `src/lib/i18n/locales/languages.json` - Supported language list
+- `src/lib/i18n/locales/lt-LT/` - Localization folder
+- `src/lib/i18n/locales/lt-LT/translation.json` - Translation strings
+- `src/lib/i18n/locales/ms-MY/` - Localization folder
+- `src/lib/i18n/locales/ms-MY/translation.json` - Translation strings
+- `src/lib/i18n/locales/nb-NO/` - Localization folder
+- `src/lib/i18n/locales/nb-NO/translation.json` - Translation strings
+- `src/lib/i18n/locales/nl-NL/` - Localization folder
+- `src/lib/i18n/locales/nl-NL/translation.json` - Translation strings
+- `src/lib/i18n/locales/pa-IN/` - Localization folder
+- `src/lib/i18n/locales/pa-IN/translation.json` - Translation strings
+- `src/lib/i18n/locales/pl-PL/` - Localization folder
+- `src/lib/i18n/locales/pl-PL/translation.json` - Translation strings
+- `src/lib/i18n/locales/pt-BR/` - Localization folder
+- `src/lib/i18n/locales/pt-BR/translation.json` - Translation strings
+- `src/lib/i18n/locales/pt-PT/` - Localization folder
+- `src/lib/i18n/locales/pt-PT/translation.json` - Translation strings
+- `src/lib/i18n/locales/ro-RO/` - Localization folder
+- `src/lib/i18n/locales/ro-RO/translation.json` - Translation strings
+- `src/lib/i18n/locales/ru-RU/` - Localization folder
+- `src/lib/i18n/locales/ru-RU/translation.json` - Translation strings
+- `src/lib/i18n/locales/sk-SK/` - Localization folder
+- `src/lib/i18n/locales/sk-SK/translation.json` - Translation strings
+- `src/lib/i18n/locales/sr-RS/` - Localization folder
+- `src/lib/i18n/locales/sr-RS/translation.json` - Translation strings
+- `src/lib/i18n/locales/sv-SE/` - Localization folder
+- `src/lib/i18n/locales/sv-SE/translation.json` - Translation strings
+- `src/lib/i18n/locales/th-TH/` - Localization folder
+- `src/lib/i18n/locales/th-TH/translation.json` - Translation strings
+- `src/lib/i18n/locales/tk-TM/` - Localization folder
+- `src/lib/i18n/locales/tk-TM/translation.json` - Translation strings
+- `src/lib/i18n/locales/tr-TR/` - Localization folder
+- `src/lib/i18n/locales/tr-TR/translation.json` - Translation strings
+- `src/lib/i18n/locales/ug-CN/` - Localization folder
+- `src/lib/i18n/locales/ug-CN/translation.json` - Translation strings
+- `src/lib/i18n/locales/uk-UA/` - Localization folder
+- `src/lib/i18n/locales/uk-UA/translation.json` - Translation strings
+- `src/lib/i18n/locales/ur-PK/` - Localization folder
+- `src/lib/i18n/locales/ur-PK/translation.json` - Translation strings
+- `src/lib/i18n/locales/uz-Cyrl-UZ/` - Localization folder
+- `src/lib/i18n/locales/uz-Cyrl-UZ/translation.json` - Translation strings
+- `src/lib/i18n/locales/uz-Latn-Uz/` - Localization folder
+- `src/lib/i18n/locales/uz-Latn-Uz/translation.json` - Translation strings
+- `src/lib/i18n/locales/vi-VN/` - Localization folder
+- `src/lib/i18n/locales/vi-VN/translation.json` - Translation strings
+- `src/lib/i18n/locales/zh-CN/` - Localization folder
+- `src/lib/i18n/locales/zh-CN/translation.json` - Translation strings
+- `src/lib/i18n/locales/zh-TW/` - Localization folder
+- `src/lib/i18n/locales/zh-TW/translation.json` - Translation strings
+
+#### UI Components (src/lib/components)
+
+- `src/lib/components/AddConnectionModal.svelte` - Modal dialog for add connection
+- `src/lib/components/AddFilesPlaceholder.svelte` - Component for add files placeholder
+- `src/lib/components/AddToolServerModal.svelte` - Modal dialog for add tool server
+- `src/lib/components/admin/` - Component folder
+- `src/lib/components/admin/Evaluations/` - Component folder
+- `src/lib/components/admin/Evaluations/FeedbackMenu.svelte` - Component for feedback menu
+- `src/lib/components/admin/Evaluations/FeedbackModal.svelte` - Modal dialog for feedback
+- `src/lib/components/admin/Evaluations/Feedbacks.svelte` - Component for feedbacks
+- `src/lib/components/admin/Evaluations/Leaderboard.svelte` - Component for leaderboard
+- `src/lib/components/admin/Evaluations/LeaderboardModal.svelte` - Modal dialog for leaderboard
+- `src/lib/components/admin/Evaluations/ModelActivityChart.svelte` - Component for model activity chart
+- `src/lib/components/admin/Evaluations.svelte` - Component for evaluations
+- `src/lib/components/admin/Functions/` - Component folder
+- `src/lib/components/admin/Functions/AddFunctionMenu.svelte` - Component for add function menu
+- `src/lib/components/admin/Functions/FunctionEditor.svelte` - Editor UI for function
+- `src/lib/components/admin/Functions/FunctionMenu.svelte` - Component for function menu
+- `src/lib/components/admin/Functions.svelte` - Component for functions
+- `src/lib/components/admin/Settings/` - Component folder
+- `src/lib/components/admin/Settings/Audio.svelte` - Component for audio
+- `src/lib/components/admin/Settings/CodeExecution.svelte` - Component for code execution
+- `src/lib/components/admin/Settings/Connections/` - Component folder
+- `src/lib/components/admin/Settings/Connections/ManageOllamaModal.svelte` - Modal dialog for manage ollama
+- `src/lib/components/admin/Settings/Connections/OllamaConnection.svelte` - Component for ollama connection
+- `src/lib/components/admin/Settings/Connections/OpenAIConnection.svelte` - Component for open aiconnection
+- `src/lib/components/admin/Settings/Connections.svelte` - Component for connections
+- `src/lib/components/admin/Settings/Database.svelte` - Component for database
+- `src/lib/components/admin/Settings/Documents.svelte` - Component for documents
+- `src/lib/components/admin/Settings/Evaluations/` - Component folder
+- `src/lib/components/admin/Settings/Evaluations/ArenaModelModal.svelte` - Modal dialog for arena model
+- `src/lib/components/admin/Settings/Evaluations/Model.svelte` - Component for model
+- `src/lib/components/admin/Settings/Evaluations.svelte` - Component for evaluations
+- `src/lib/components/admin/Settings/General.svelte` - Component for general
+- `src/lib/components/admin/Settings/Images.svelte` - Component for images
+- `src/lib/components/admin/Settings/Interface/` - Component folder
+- `src/lib/components/admin/Settings/Interface/Banners.svelte` - Component for banners
+- `src/lib/components/admin/Settings/Interface.svelte` - Component for interface
+- `src/lib/components/admin/Settings/Models/` - Component folder
+- `src/lib/components/admin/Settings/Models/ConfigureModelsModal.svelte` - Modal dialog for configure models
+- `src/lib/components/admin/Settings/Models/Manage/` - Component folder
+- `src/lib/components/admin/Settings/Models/Manage/ManageMultipleOllama.svelte` - Component for manage multiple ollama
+- `src/lib/components/admin/Settings/Models/Manage/ManageOllama.svelte` - Component for manage ollama
+- `src/lib/components/admin/Settings/Models/ManageModelsModal.svelte` - Modal dialog for manage models
+- `src/lib/components/admin/Settings/Models/ModelList.svelte` - List view for model
+- `src/lib/components/admin/Settings/Models/ModelMenu.svelte` - Component for model menu
+- `src/lib/components/admin/Settings/Models/ModelSelector.svelte` - Component for model selector
+- `src/lib/components/admin/Settings/Models.svelte` - Component for models
+- `src/lib/components/admin/Settings/Pipelines.svelte` - Component for pipelines
+- `src/lib/components/admin/Settings/Tools.svelte` - Component for tools
+- `src/lib/components/admin/Settings/WebSearch.svelte` - Component for web search
+- `src/lib/components/admin/Settings.svelte` - Component for settings
+- `src/lib/components/admin/Users/` - Component folder
+- `src/lib/components/admin/Users/Groups/` - Component folder
+- `src/lib/components/admin/Users/Groups/EditGroupModal.svelte` - Modal dialog for edit group
+- `src/lib/components/admin/Users/Groups/General.svelte` - Component for general
+- `src/lib/components/admin/Users/Groups/GroupItem.svelte` - Item renderer for group
+- `src/lib/components/admin/Users/Groups/Permissions.svelte` - Component for permissions
+- `src/lib/components/admin/Users/Groups/Users.svelte` - Component for users
+- `src/lib/components/admin/Users/Groups.svelte` - Component for groups
+- `src/lib/components/admin/Users/UserList/` - Component folder
+- `src/lib/components/admin/Users/UserList/AddUserModal.svelte` - Modal dialog for add user
+- `src/lib/components/admin/Users/UserList/EditUserModal.svelte` - Modal dialog for edit user
+- `src/lib/components/admin/Users/UserList/UserChatsModal.svelte` - Modal dialog for user chats
+- `src/lib/components/admin/Users/UserList.svelte` - List view for user
+- `src/lib/components/admin/Users.svelte` - Component for users
+- `src/lib/components/app/` - Component folder
+- `src/lib/components/app/AppSidebar.svelte` - Sidebar UI for app
+- `src/lib/components/ChangelogModal.svelte` - Modal dialog for changelog
+- `src/lib/components/channel/` - Component folder
+- `src/lib/components/channel/Channel.svelte` - Component for channel
+- `src/lib/components/channel/ChannelInfoModal/` - Component folder
+- `src/lib/components/channel/ChannelInfoModal/AddMembersModal.svelte` - Modal dialog for add members
+- `src/lib/components/channel/ChannelInfoModal/UserList.svelte` - List view for user
+- `src/lib/components/channel/ChannelInfoModal.svelte` - Modal dialog for channel info
+- `src/lib/components/channel/MessageInput/` - Component folder
+- `src/lib/components/channel/MessageInput/InputMenu.svelte` - Component for input menu
+- `src/lib/components/channel/MessageInput/MentionList.svelte` - List view for mention
+- `src/lib/components/channel/MessageInput.svelte` - Input control for message
+- `src/lib/components/channel/Messages/` - Component folder
+- `src/lib/components/channel/Messages/Message/` - Component folder
+- `src/lib/components/channel/Messages/Message/ProfilePreview.svelte` - Component for profile preview
+- `src/lib/components/channel/Messages/Message/UserStatus.svelte` - Component for user status
+- `src/lib/components/channel/Messages/Message/UserStatusLinkPreview.svelte` - Component for user status link preview
+- `src/lib/components/channel/Messages/Message.svelte` - Component for message
+- `src/lib/components/channel/Messages.svelte` - Component for messages
+- `src/lib/components/channel/Navbar.svelte` - Navbar for 
+- `src/lib/components/channel/PinnedMessagesModal.svelte` - Modal dialog for pinned messages
+- `src/lib/components/channel/Thread.svelte` - Component for thread
+- `src/lib/components/channel/WebhookItem.svelte` - Item renderer for webhook
+- `src/lib/components/channel/WebhooksModal.svelte` - Modal dialog for webhooks
+- `src/lib/components/chat/` - Component folder
+- `src/lib/components/chat/Artifacts.svelte` - Component for artifacts
+- `src/lib/components/chat/Chat.svelte` - Component for chat
+- `src/lib/components/chat/ChatControls/` - Component folder
+- `src/lib/components/chat/ChatControls/Embeds.svelte` - Component for embeds
+- `src/lib/components/chat/ChatControls.svelte` - Component for chat controls
+- `src/lib/components/chat/ChatPlaceholder.svelte` - Component for chat placeholder
+- `src/lib/components/chat/ContentRenderer/` - Component folder
+- `src/lib/components/chat/ContentRenderer/FloatingButtons.svelte` - Component for floating buttons
+- `src/lib/components/chat/Controls/` - Component folder
+- `src/lib/components/chat/Controls/Controls.svelte` - Component for controls
+- `src/lib/components/chat/Controls/Valves.svelte` - Component for valves
+- `src/lib/components/chat/MessageInput/` - Component folder
+- `src/lib/components/chat/MessageInput/AttachWebpageModal.svelte` - Modal dialog for attach webpage
+- `src/lib/components/chat/MessageInput/CallOverlay/` - Component folder
+- `src/lib/components/chat/MessageInput/CallOverlay/VideoInputMenu.svelte` - Component for video input menu
+- `src/lib/components/chat/MessageInput/CallOverlay.svelte` - Component for call overlay
+- `src/lib/components/chat/MessageInput/Commands/` - Component folder
+- `src/lib/components/chat/MessageInput/Commands/Knowledge.svelte` - Component for knowledge
+- `src/lib/components/chat/MessageInput/Commands/Models.svelte` - Component for models
+- `src/lib/components/chat/MessageInput/Commands/Prompts.svelte` - Component for prompts
+- `src/lib/components/chat/MessageInput/CommandSuggestionList.svelte` - List view for command suggestion
+- `src/lib/components/chat/MessageInput/FilesOverlay.svelte` - Component for files overlay
+- `src/lib/components/chat/MessageInput/InputMenu/` - Component folder
+- `src/lib/components/chat/MessageInput/InputMenu/Chats.svelte` - Component for chats
+- `src/lib/components/chat/MessageInput/InputMenu/Knowledge.svelte` - Component for knowledge
+- `src/lib/components/chat/MessageInput/InputMenu/Notes.svelte` - Component for notes
+- `src/lib/components/chat/MessageInput/InputMenu.svelte` - Component for input menu
+- `src/lib/components/chat/MessageInput/InputVariablesModal.svelte` - Modal dialog for input variables
+- `src/lib/components/chat/MessageInput/IntegrationsMenu.svelte` - Component for integrations menu
+- `src/lib/components/chat/MessageInput/VoiceRecording.svelte` - Component for voice recording
+- `src/lib/components/chat/MessageInput.svelte` - Input control for message
+- `src/lib/components/chat/Messages/` - Component folder
+- `src/lib/components/chat/Messages/Citations/` - Component folder
+- `src/lib/components/chat/Messages/Citations/CitationModal.svelte` - Modal dialog for citation
+- `src/lib/components/chat/Messages/Citations/CitationsModal.svelte` - Modal dialog for citations
+- `src/lib/components/chat/Messages/Citations.svelte` - Component for citations
+- `src/lib/components/chat/Messages/CodeBlock.svelte` - Component for code block
+- `src/lib/components/chat/Messages/CodeExecutionModal.svelte` - Modal dialog for code execution
+- `src/lib/components/chat/Messages/CodeExecutions.svelte` - Component for code executions
+- `src/lib/components/chat/Messages/ContentRenderer.svelte` - Component for content renderer
+- `src/lib/components/chat/Messages/Error.svelte` - Component for error
+- `src/lib/components/chat/Messages/Markdown/` - Component folder
+- `src/lib/components/chat/Messages/Markdown/AlertRenderer.svelte` - Component for alert renderer
+- `src/lib/components/chat/Messages/Markdown/HTMLToken.svelte` - Component for htmltoken
+- `src/lib/components/chat/Messages/Markdown/KatexRenderer.svelte` - Component for katex renderer
+- `src/lib/components/chat/Messages/Markdown/MarkdownInlineTokens/` - Component folder
+- `src/lib/components/chat/Messages/Markdown/MarkdownInlineTokens/CodespanToken.svelte` - Component for codespan token
+- `src/lib/components/chat/Messages/Markdown/MarkdownInlineTokens/MentionToken.svelte` - Component for mention token
+- `src/lib/components/chat/Messages/Markdown/MarkdownInlineTokens/TextToken.svelte` - Component for text token
+- `src/lib/components/chat/Messages/Markdown/MarkdownInlineTokens.svelte` - Component for markdown inline tokens
+- `src/lib/components/chat/Messages/Markdown/MarkdownTokens.svelte` - Component for markdown tokens
+- `src/lib/components/chat/Messages/Markdown/Source.svelte` - Component for source
+- `src/lib/components/chat/Messages/Markdown/SourceToken.svelte` - Component for source token
+- `src/lib/components/chat/Messages/Markdown.svelte` - Component for markdown
+- `src/lib/components/chat/Messages/Message.svelte` - Component for message
+- `src/lib/components/chat/Messages/MultiResponseMessages.svelte` - Component for multi response messages
+- `src/lib/components/chat/Messages/Name.svelte` - Component for name
+- `src/lib/components/chat/Messages/ProfileImage.svelte` - Component for profile image
+- `src/lib/components/chat/Messages/RateComment.svelte` - Component for rate comment
+- `src/lib/components/chat/Messages/ResponseMessage/` - Component folder
+- `src/lib/components/chat/Messages/ResponseMessage/FollowUps.svelte` - Component for follow ups
+- `src/lib/components/chat/Messages/ResponseMessage/RegenerateMenu.svelte` - Component for regenerate menu
+- `src/lib/components/chat/Messages/ResponseMessage/StatusHistory/` - Component folder
+- `src/lib/components/chat/Messages/ResponseMessage/StatusHistory/StatusItem.svelte` - Item renderer for status
+- `src/lib/components/chat/Messages/ResponseMessage/StatusHistory.svelte` - Component for status history
+- `src/lib/components/chat/Messages/ResponseMessage/WebSearchResults.svelte` - Component for web search results
+- `src/lib/components/chat/Messages/ResponseMessage.svelte` - Component for response message
+- `src/lib/components/chat/Messages/Skeleton.svelte` - Component for skeleton
+- `src/lib/components/chat/Messages/UserMessage.svelte` - Component for user message
+- `src/lib/components/chat/Messages.svelte` - Component for messages
+- `src/lib/components/chat/ModelSelector/` - Component folder
+- `src/lib/components/chat/ModelSelector/ModelItem.svelte` - Item renderer for model
+- `src/lib/components/chat/ModelSelector/ModelItemMenu.svelte` - Component for model item menu
+- `src/lib/components/chat/ModelSelector/Selector.svelte` - Component for selector
+- `src/lib/components/chat/ModelSelector.svelte` - Component for model selector
+- `src/lib/components/chat/Navbar.svelte` - Navbar for 
+- `src/lib/components/chat/Overview/` - Component folder
+- `src/lib/components/chat/Overview/Flow.svelte` - Component for flow
+- `src/lib/components/chat/Overview/Node.svelte` - Component for node
+- `src/lib/components/chat/Overview/View.svelte` - Component for view
+- `src/lib/components/chat/Overview.svelte` - Component for overview
+- `src/lib/components/chat/Placeholder/` - Component folder
+- `src/lib/components/chat/Placeholder/ChatList.svelte` - List view for chat
+- `src/lib/components/chat/Placeholder/FolderKnowledge.svelte` - Component for folder knowledge
+- `src/lib/components/chat/Placeholder/FolderPlaceholder.svelte` - Component for folder placeholder
+- `src/lib/components/chat/Placeholder/FolderTitle.svelte` - Component for folder title
+- `src/lib/components/chat/Placeholder.svelte` - Component for placeholder
+- `src/lib/components/chat/Settings/` - Component folder
+- `src/lib/components/chat/Settings/About.svelte` - Component for about
+- `src/lib/components/chat/Settings/Account/` - Component folder
+- `src/lib/components/chat/Settings/Account/UpdatePassword.svelte` - Component for update password
+- `src/lib/components/chat/Settings/Account/UserProfileImage.svelte` - Component for user profile image
+- `src/lib/components/chat/Settings/Account.svelte` - Component for account
+- `src/lib/components/chat/Settings/Advanced/` - Component folder
+- `src/lib/components/chat/Settings/Advanced/AdvancedParams.svelte` - Component for advanced params
+- `src/lib/components/chat/Settings/Audio.svelte` - Component for audio
+- `src/lib/components/chat/Settings/Connections/` - Component folder
+- `src/lib/components/chat/Settings/Connections/Connection.svelte` - Component for connection
+- `src/lib/components/chat/Settings/Connections.svelte` - Component for connections
+- `src/lib/components/chat/Settings/DataControls.svelte` - Component for data controls
+- `src/lib/components/chat/Settings/General.svelte` - Component for general
+- `src/lib/components/chat/Settings/Interface/` - Component folder
+- `src/lib/components/chat/Settings/Interface/ManageFloatingActionButtonsModal.svelte` - Modal dialog for manage floating action buttons
+- `src/lib/components/chat/Settings/Interface/ManageImageCompressionModal.svelte` - Modal dialog for manage image compression
+- `src/lib/components/chat/Settings/Interface.svelte` - Component for interface
+- `src/lib/components/chat/Settings/Personalization/` - Component folder
+- `src/lib/components/chat/Settings/Personalization/AddMemoryModal.svelte` - Modal dialog for add memory
+- `src/lib/components/chat/Settings/Personalization/EditMemoryModal.svelte` - Modal dialog for edit memory
+- `src/lib/components/chat/Settings/Personalization/ManageModal.svelte` - Modal dialog for manage
+- `src/lib/components/chat/Settings/Personalization.svelte` - Component for personalization
+- `src/lib/components/chat/Settings/SyncStatsModal.svelte` - Modal dialog for sync stats
+- `src/lib/components/chat/Settings/Tools/` - Component folder
+- `src/lib/components/chat/Settings/Tools/Connection.svelte` - Component for connection
+- `src/lib/components/chat/Settings/Tools.svelte` - Component for tools
+- `src/lib/components/chat/SettingsModal.svelte` - Modal dialog for settings
+- `src/lib/components/chat/ShareChatModal.svelte` - Modal dialog for share chat
+- `src/lib/components/chat/ShortcutItem.svelte` - Item renderer for shortcut
+- `src/lib/components/chat/ShortcutsModal.svelte` - Modal dialog for shortcuts
+- `src/lib/components/chat/Suggestions.svelte` - Component for suggestions
+- `src/lib/components/chat/TagChatModal.svelte` - Modal dialog for tag chat
+- `src/lib/components/chat/Tags.svelte` - Component for tags
+- `src/lib/components/chat/ToolServersModal.svelte` - Modal dialog for tool servers
+- `src/lib/components/common/` - Component folder
+- `src/lib/components/common/Badge.svelte` - Component for badge
+- `src/lib/components/common/Banner.svelte` - Component for banner
+- `src/lib/components/common/Checkbox.svelte` - Component for checkbox
+- `src/lib/components/common/CodeEditor.svelte` - Editor UI for code
+- `src/lib/components/common/CodeEditorModal.svelte` - Modal dialog for code editor
+- `src/lib/components/common/Collapsible.svelte` - Component for collapsible
+- `src/lib/components/common/ConfirmDialog.svelte` - Component for confirm dialog
+- `src/lib/components/common/DragGhost.svelte` - Component for drag ghost
+- `src/lib/components/common/Drawer.svelte` - Component for drawer
+- `src/lib/components/common/Dropdown.svelte` - Component for dropdown
+- `src/lib/components/common/DropdownOptions.svelte` - Component for dropdown options
+- `src/lib/components/common/Emoji.svelte` - Component for emoji
+- `src/lib/components/common/EmojiPicker.svelte` - Picker UI for emoji
+- `src/lib/components/common/FileItem.svelte` - Item renderer for file
+- `src/lib/components/common/FileItemModal.svelte` - Modal dialog for file item
+- `src/lib/components/common/Folder.svelte` - Component for folder
+- `src/lib/components/common/FullHeightIframe.svelte` - Component for full height iframe
+- `src/lib/components/common/HotkeyHint.svelte` - Component for hotkey hint
+- `src/lib/components/common/Image.svelte` - Component for image
+- `src/lib/components/common/ImagePreview.svelte` - Component for image preview
+- `src/lib/components/common/InputModal.svelte` - Modal dialog for input
+- `src/lib/components/common/Loader.svelte` - Component for loader
+- `src/lib/components/common/Marquee.svelte` - Component for marquee
+- `src/lib/components/common/Modal.svelte` - Modal dialog for 
+- `src/lib/components/common/Overlay.svelte` - Component for overlay
+- `src/lib/components/common/Pagination.svelte` - Component for pagination
+- `src/lib/components/common/RichTextInput/` - Component folder
+- `src/lib/components/common/RichTextInput/AutoCompletion.js` - Component for auto completion.js
+- `src/lib/components/common/RichTextInput/Collaboration.ts` - Component for collaboration.ts
+- `src/lib/components/common/RichTextInput/commands.ts` - Component for commands.ts
+- `src/lib/components/common/RichTextInput/FormattingButtons.svelte` - Component for formatting buttons
+- `src/lib/components/common/RichTextInput/Image/` - Component folder
+- `src/lib/components/common/RichTextInput/Image/image.ts` - Component for image.ts
+- `src/lib/components/common/RichTextInput/Image/index.ts` - Component for index.ts
+- `src/lib/components/common/RichTextInput/listDragHandlePlugin.js` - Component for list drag handle plugin.js
+- `src/lib/components/common/RichTextInput/suggestions.ts` - Component for suggestions.ts
+- `src/lib/components/common/RichTextInput.svelte` - Input control for rich text
+- `src/lib/components/common/Selector.svelte` - Component for selector
+- `src/lib/components/common/SensitiveInput.svelte` - Input control for sensitive
+- `src/lib/components/common/Sidebar.svelte` - Sidebar UI for 
+- `src/lib/components/common/SlideShow.svelte` - Component for slide show
+- `src/lib/components/common/Spinner.svelte` - Component for spinner
+- `src/lib/components/common/SVGPanZoom.svelte` - Component for svgpan zoom
+- `src/lib/components/common/Switch.svelte` - Component for switch
+- `src/lib/components/common/Tags/` - Component folder
+- `src/lib/components/common/Tags/TagInput.svelte` - Input control for tag
+- `src/lib/components/common/Tags/TagItem.svelte` - Item renderer for tag
+- `src/lib/components/common/Tags/TagList.svelte` - List view for tag
+- `src/lib/components/common/Tags.svelte` - Component for tags
+- `src/lib/components/common/Textarea.svelte` - Component for textarea
+- `src/lib/components/common/Tooltip.svelte` - Component for tooltip
+- `src/lib/components/common/Valves/` - Component folder
+- `src/lib/components/common/Valves/MapSelector.svelte` - Component for map selector
+- `src/lib/components/common/Valves.svelte` - Component for valves
+- `src/lib/components/icons/` - Component folder
+- `src/lib/components/icons/AdjustmentsHorizontal.svelte` - Component for adjustments horizontal
+- `src/lib/components/icons/AdjustmentsHorizontalOutline.svelte` - Component for adjustments horizontal outline
+- `src/lib/components/icons/Agile.svelte` - Component for agile
+- `src/lib/components/icons/AlignHorizontal.svelte` - Component for align horizontal
+- `src/lib/components/icons/AlignVertical.svelte` - Component for align vertical
+- `src/lib/components/icons/AppNotification.svelte` - Component for app notification
+- `src/lib/components/icons/ArchiveBox.svelte` - Component for archive box
+- `src/lib/components/icons/ArrowDownTray.svelte` - Component for arrow down tray
+- `src/lib/components/icons/ArrowLeft.svelte` - Component for arrow left
+- `src/lib/components/icons/ArrowLeftTag.svelte` - Component for arrow left tag
+- `src/lib/components/icons/ArrowPath.svelte` - Component for arrow path
+- `src/lib/components/icons/ArrowRight.svelte` - Component for arrow right
+- `src/lib/components/icons/ArrowRightCircle.svelte` - Component for arrow right circle
+- `src/lib/components/icons/ArrowRightTag.svelte` - Component for arrow right tag
+- `src/lib/components/icons/ArrowsPointingOut.svelte` - Component for arrows pointing out
+- `src/lib/components/icons/ArrowTurnDownRight.svelte` - Component for arrow turn down right
+- `src/lib/components/icons/ArrowUpCircle.svelte` - Component for arrow up circle
+- `src/lib/components/icons/ArrowUpLeft.svelte` - Component for arrow up left
+- `src/lib/components/icons/ArrowUpLeftAlt.svelte` - Component for arrow up left alt
+- `src/lib/components/icons/ArrowUpTray.svelte` - Component for arrow up tray
+- `src/lib/components/icons/ArrowUturnLeft.svelte` - Component for arrow uturn left
+- `src/lib/components/icons/ArrowUturnRight.svelte` - Component for arrow uturn right
+- `src/lib/components/icons/Bars3BottomLeft.svelte` - Component for bars3 bottom left
+- `src/lib/components/icons/BarsArrowUp.svelte` - Component for bars arrow up
+- `src/lib/components/icons/Bold.svelte` - Component for bold
+- `src/lib/components/icons/Bolt.svelte` - Component for bolt
+- `src/lib/components/icons/Bookmark.svelte` - Component for bookmark
+- `src/lib/components/icons/BookmarkSlash.svelte` - Component for bookmark slash
+- `src/lib/components/icons/BookOpen.svelte` - Component for book open
+- `src/lib/components/icons/Calendar.svelte` - Component for calendar
+- `src/lib/components/icons/CalendarSolid.svelte` - Component for calendar solid
+- `src/lib/components/icons/Camera.svelte` - Component for camera
+- `src/lib/components/icons/CameraSolid.svelte` - Component for camera solid
+- `src/lib/components/icons/ChartBar.svelte` - Component for chart bar
+- `src/lib/components/icons/ChatBubble.svelte` - Component for chat bubble
+- `src/lib/components/icons/ChatBubbleDotted.svelte` - Component for chat bubble dotted
+- `src/lib/components/icons/ChatBubbleDottedChecked.svelte` - Component for chat bubble dotted checked
+- `src/lib/components/icons/ChatBubbleOval.svelte` - Component for chat bubble oval
+- `src/lib/components/icons/ChatBubbles.svelte` - Component for chat bubbles
+- `src/lib/components/icons/ChatCheck.svelte` - Component for chat check
+- `src/lib/components/icons/ChatPlus.svelte` - Component for chat plus
+- `src/lib/components/icons/Check.svelte` - Component for check
+- `src/lib/components/icons/CheckBox.svelte` - Component for check box
+- `src/lib/components/icons/CheckCircle.svelte` - Component for check circle
+- `src/lib/components/icons/ChevronDown.svelte` - Component for chevron down
+- `src/lib/components/icons/ChevronLeft.svelte` - Component for chevron left
+- `src/lib/components/icons/ChevronRight.svelte` - Component for chevron right
+- `src/lib/components/icons/ChevronUp.svelte` - Component for chevron up
+- `src/lib/components/icons/ChevronUpDown.svelte` - Component for chevron up down
+- `src/lib/components/icons/Clip.svelte` - Component for clip
+- `src/lib/components/icons/Clipboard.svelte` - Component for clipboard
+- `src/lib/components/icons/ClockRotateRight.svelte` - Component for clock rotate right
+- `src/lib/components/icons/Cloud.svelte` - Component for cloud
+- `src/lib/components/icons/CloudArrowUp.svelte` - Component for cloud arrow up
+- `src/lib/components/icons/Code.svelte` - Component for code
+- `src/lib/components/icons/CodeBracket.svelte` - Component for code bracket
+- `src/lib/components/icons/Cog6.svelte` - Component for cog6
+- `src/lib/components/icons/Cog6Solid.svelte` - Component for cog6 solid
+- `src/lib/components/icons/CommandLine.svelte` - Component for command line
+- `src/lib/components/icons/CommandLineSolid.svelte` - Component for command line solid
+- `src/lib/components/icons/Component.svelte` - Component for component
+- `src/lib/components/icons/Computer.svelte` - Component for computer
+- `src/lib/components/icons/Cube.svelte` - Component for cube
+- `src/lib/components/icons/CursorArrowRays.svelte` - Component for cursor arrow rays
+- `src/lib/components/icons/Database.svelte` - Component for database
+- `src/lib/components/icons/DatabaseSettings.svelte` - Component for database settings
+- `src/lib/components/icons/Document.svelte` - Component for document
+- `src/lib/components/icons/DocumentArrowDown.svelte` - Component for document arrow down
+- `src/lib/components/icons/DocumentArrowUp.svelte` - Component for document arrow up
+- `src/lib/components/icons/DocumentArrowUpSolid.svelte` - Component for document arrow up solid
+- `src/lib/components/icons/DocumentChartBar.svelte` - Component for document chart bar
+- `src/lib/components/icons/DocumentCheck.svelte` - Component for document check
+- `src/lib/components/icons/DocumentDuplicate.svelte` - Component for document duplicate
+- `src/lib/components/icons/DocumentPage.svelte` - Page-level UI for document
+- `src/lib/components/icons/Download.svelte` - Component for download
+- `src/lib/components/icons/EllipsisHorizontal.svelte` - Component for ellipsis horizontal
+- `src/lib/components/icons/EllipsisVertical.svelte` - Component for ellipsis vertical
+- `src/lib/components/icons/Expand.svelte` - Component for expand
+- `src/lib/components/icons/Eye.svelte` - Component for eye
+- `src/lib/components/icons/EyeSlash.svelte` - Component for eye slash
+- `src/lib/components/icons/Face.svelte` - Component for face
+- `src/lib/components/icons/FaceId.svelte` - Component for face id
+- `src/lib/components/icons/FaceSmile.svelte` - Component for face smile
+- `src/lib/components/icons/FloppyDisk.svelte` - Component for floppy disk
+- `src/lib/components/icons/Folder.svelte` - Component for folder
+- `src/lib/components/icons/FolderOpen.svelte` - Component for folder open
+- `src/lib/components/icons/GarbageBin.svelte` - Component for garbage bin
+- `src/lib/components/icons/Github.svelte` - Component for github
+- `src/lib/components/icons/Glasses.svelte` - Component for glasses
+- `src/lib/components/icons/GlobeAlt.svelte` - Component for globe alt
+- `src/lib/components/icons/GlobeAltSolid.svelte` - Component for globe alt solid
+- `src/lib/components/icons/Grid.svelte` - Component for grid
+- `src/lib/components/icons/H1.svelte` - Component for h1
+- `src/lib/components/icons/H2.svelte` - Component for h2
+- `src/lib/components/icons/H3.svelte` - Component for h3
+- `src/lib/components/icons/Hashtag.svelte` - Component for hashtag
+- `src/lib/components/icons/Headphone.svelte` - Component for headphone
+- `src/lib/components/icons/Heart.svelte` - Component for heart
+- `src/lib/components/icons/Home.svelte` - Component for home
+- `src/lib/components/icons/Info.svelte` - Component for info
+- `src/lib/components/icons/InfoCircle.svelte` - Component for info circle
+- `src/lib/components/icons/Italic.svelte` - Component for italic
+- `src/lib/components/icons/Keyboard.svelte` - Component for keyboard
+- `src/lib/components/icons/Knobs.svelte` - Component for knobs
+- `src/lib/components/icons/Label.svelte` - Component for label
+- `src/lib/components/icons/Lifebuoy.svelte` - Component for lifebuoy
+- `src/lib/components/icons/LightBulb.svelte` - Component for light bulb
+- `src/lib/components/icons/LineSpace.svelte` - Component for line space
+- `src/lib/components/icons/LineSpaceSmaller.svelte` - Component for line space smaller
+- `src/lib/components/icons/Link.svelte` - Component for link
+- `src/lib/components/icons/ListBullet.svelte` - Component for list bullet
+- `src/lib/components/icons/Lock.svelte` - Component for lock
+- `src/lib/components/icons/LockClosed.svelte` - Component for lock closed
+- `src/lib/components/icons/Map.svelte` - Component for map
+- `src/lib/components/icons/MenuLines.svelte` - Component for menu lines
+- `src/lib/components/icons/Merge.svelte` - Component for merge
+- `src/lib/components/icons/Mic.svelte` - Component for mic
+- `src/lib/components/icons/MicSolid.svelte` - Component for mic solid
+- `src/lib/components/icons/Minus.svelte` - Component for minus
+- `src/lib/components/icons/Note.svelte` - Component for note
+- `src/lib/components/icons/NumberedList.svelte` - List view for numbered
+- `src/lib/components/icons/PageEdit.svelte` - Component for page edit
+- `src/lib/components/icons/PagePlus.svelte` - Component for page plus
+- `src/lib/components/icons/Pencil.svelte` - Component for pencil
+- `src/lib/components/icons/PencilSolid.svelte` - Component for pencil solid
+- `src/lib/components/icons/PencilSquare.svelte` - Component for pencil square
+- `src/lib/components/icons/PeopleTag.svelte` - Component for people tag
+- `src/lib/components/icons/Photo.svelte` - Component for photo
+- `src/lib/components/icons/PhotoSolid.svelte` - Component for photo solid
+- `src/lib/components/icons/Pin.svelte` - Component for pin
+- `src/lib/components/icons/PinSlash.svelte` - Component for pin slash
+- `src/lib/components/icons/Plus.svelte` - Component for plus
+- `src/lib/components/icons/PlusAlt.svelte` - Component for plus alt
+- `src/lib/components/icons/QuestionMarkCircle.svelte` - Component for question mark circle
+- `src/lib/components/icons/QueueList.svelte` - List view for queue
+- `src/lib/components/icons/Refresh.svelte` - Component for refresh
+- `src/lib/components/icons/Reset.svelte` - Component for reset
+- `src/lib/components/icons/Search.svelte` - Component for search
+- `src/lib/components/icons/Settings.svelte` - Component for settings
+- `src/lib/components/icons/SettingsAlt.svelte` - Component for settings alt
+- `src/lib/components/icons/Share.svelte` - Component for share
+- `src/lib/components/icons/Sidebar.svelte` - Sidebar UI for 
+- `src/lib/components/icons/SignOut.svelte` - Component for sign out
+- `src/lib/components/icons/SoundHigh.svelte` - Component for sound high
+- `src/lib/components/icons/Sparkles.svelte` - Component for sparkles
+- `src/lib/components/icons/SparklesSolid.svelte` - Component for sparkles solid
+- `src/lib/components/icons/Star.svelte` - Component for star
+- `src/lib/components/icons/Strikethrough.svelte` - Component for strikethrough
+- `src/lib/components/icons/Tag.svelte` - Component for tag
+- `src/lib/components/icons/Terminal.svelte` - Component for terminal
+- `src/lib/components/icons/Underline.svelte` - Component for underline
+- `src/lib/components/icons/Union.svelte` - Component for union
+- `src/lib/components/icons/User.svelte` - Component for user
+- `src/lib/components/icons/UserAlt.svelte` - Component for user alt
+- `src/lib/components/icons/UserBadgeCheck.svelte` - Component for user badge check
+- `src/lib/components/icons/UserCircle.svelte` - Component for user circle
+- `src/lib/components/icons/UserCircleSolid.svelte` - Component for user circle solid
+- `src/lib/components/icons/UserGroup.svelte` - Component for user group
+- `src/lib/components/icons/UserPlusSolid.svelte` - Component for user plus solid
+- `src/lib/components/icons/Users.svelte` - Component for users
+- `src/lib/components/icons/UsersSolid.svelte` - Component for users solid
+- `src/lib/components/icons/Voice.svelte` - Component for voice
+- `src/lib/components/icons/Wrench.svelte` - Component for wrench
+- `src/lib/components/icons/WrenchAlt.svelte` - Component for wrench alt
+- `src/lib/components/icons/WrenchSolid.svelte` - Component for wrench solid
+- `src/lib/components/icons/XMark.svelte` - Component for xmark
+- `src/lib/components/icons/Youtube.svelte` - Component for youtube
+- `src/lib/components/ImportModal.svelte` - Modal dialog for import
+- `src/lib/components/layout/` - Component folder
+- `src/lib/components/layout/ArchivedChatsModal.svelte` - Modal dialog for archived chats
+- `src/lib/components/layout/ChatsModal.svelte` - Modal dialog for chats
+- `src/lib/components/layout/Navbar/` - Component folder
+- `src/lib/components/layout/Navbar/Menu.svelte` - Component for menu
+- `src/lib/components/layout/Overlay/` - Component folder
+- `src/lib/components/layout/Overlay/AccountPending.svelte` - Component for account pending
+- `src/lib/components/layout/SearchModal.svelte` - Modal dialog for search
+- `src/lib/components/layout/Sidebar/` - Component folder
+- `src/lib/components/layout/Sidebar/ChannelItem.svelte` - Item renderer for channel
+- `src/lib/components/layout/Sidebar/ChannelModal.svelte` - Modal dialog for channel
+- `src/lib/components/layout/Sidebar/ChatItem.svelte` - Item renderer for chat
+- `src/lib/components/layout/Sidebar/ChatMenu.svelte` - Component for chat menu
+- `src/lib/components/layout/Sidebar/Folders/` - Component folder
+- `src/lib/components/layout/Sidebar/Folders/FolderMenu.svelte` - Component for folder menu
+- `src/lib/components/layout/Sidebar/Folders/FolderModal.svelte` - Modal dialog for folder
+- `src/lib/components/layout/Sidebar/Folders.svelte` - Component for folders
+- `src/lib/components/layout/Sidebar/PinnedModelItem.svelte` - Item renderer for pinned model
+- `src/lib/components/layout/Sidebar/PinnedModelList.svelte` - List view for pinned model
+- `src/lib/components/layout/Sidebar/RecursiveFolder.svelte` - Component for recursive folder
+- `src/lib/components/layout/Sidebar/SearchInput.svelte` - Input control for search
+- `src/lib/components/layout/Sidebar/UserMenu.svelte` - Component for user menu
+- `src/lib/components/layout/Sidebar/UserStatusModal.svelte` - Modal dialog for user status
+- `src/lib/components/layout/Sidebar.svelte` - Sidebar UI for 
+- `src/lib/components/layout/UpdateInfoToast.svelte` - Component for update info toast
+- `src/lib/components/notes/` - Component folder
+- `src/lib/components/notes/AIMenu.svelte` - Component for aimenu
+- `src/lib/components/notes/NoteEditor/` - Component folder
+- `src/lib/components/notes/NoteEditor/Chat/` - Component folder
+- `src/lib/components/notes/NoteEditor/Chat/Message.svelte` - Component for message
+- `src/lib/components/notes/NoteEditor/Chat/Messages.svelte` - Component for messages
+- `src/lib/components/notes/NoteEditor/Chat.svelte` - Component for chat
+- `src/lib/components/notes/NoteEditor/Controls.svelte` - Component for controls
+- `src/lib/components/notes/NoteEditor.svelte` - Editor UI for note
+- `src/lib/components/notes/NotePanel.svelte` - Panel layout for note
+- `src/lib/components/notes/Notes/` - Component folder
+- `src/lib/components/notes/Notes/NoteMenu.svelte` - Component for note menu
+- `src/lib/components/notes/Notes.svelte` - Component for notes
+- `src/lib/components/notes/RecordMenu.svelte` - Component for record menu
+- `src/lib/components/notes/utils.ts` - Component for utils.ts
+- `src/lib/components/NotificationToast.svelte` - Component for notification toast
+- `src/lib/components/OnBoarding.svelte` - Component for on boarding
+- `src/lib/components/playground/` - Component folder
+- `src/lib/components/playground/Chat/` - Component folder
+- `src/lib/components/playground/Chat/Message.svelte` - Component for message
+- `src/lib/components/playground/Chat/Messages.svelte` - Component for messages
+- `src/lib/components/playground/Chat.svelte` - Component for chat
+- `src/lib/components/playground/Completions.svelte` - Component for completions
+- `src/lib/components/workspace/` - Component folder
+- `src/lib/components/workspace/common/` - Component folder
+- `src/lib/components/workspace/common/AccessControl.svelte` - Component for access control
+- `src/lib/components/workspace/common/AccessControlModal.svelte` - Modal dialog for access control
+- `src/lib/components/workspace/common/ManifestModal.svelte` - Modal dialog for manifest
+- `src/lib/components/workspace/common/MemberSelector.svelte` - Component for member selector
+- `src/lib/components/workspace/common/TagSelector.svelte` - Component for tag selector
+- `src/lib/components/workspace/common/ValvesModal.svelte` - Modal dialog for valves
+- `src/lib/components/workspace/common/ViewSelector.svelte` - Component for view selector
+- `src/lib/components/workspace/common/Visibility.svelte` - Component for visibility
+- `src/lib/components/workspace/Knowledge/` - Component folder
+- `src/lib/components/workspace/Knowledge/CreateKnowledgeBase.svelte` - Component for create knowledge base
+- `src/lib/components/workspace/Knowledge/ItemMenu.svelte` - Component for item menu
+- `src/lib/components/workspace/Knowledge/KnowledgeBase/` - Component folder
+- `src/lib/components/workspace/Knowledge/KnowledgeBase/AddContentMenu.svelte` - Component for add content menu
+- `src/lib/components/workspace/Knowledge/KnowledgeBase/AddTextContentModal.svelte` - Modal dialog for add text content
+- `src/lib/components/workspace/Knowledge/KnowledgeBase/Files.svelte` - Component for files
+- `src/lib/components/workspace/Knowledge/KnowledgeBase.svelte` - Component for knowledge base
+- `src/lib/components/workspace/Knowledge.svelte` - Component for knowledge
+- `src/lib/components/workspace/Models/` - Component folder
+- `src/lib/components/workspace/Models/ActionsSelector.svelte` - Component for actions selector
+- `src/lib/components/workspace/Models/Capabilities.svelte` - Component for capabilities
+- `src/lib/components/workspace/Models/DefaultFeatures.svelte` - Component for default features
+- `src/lib/components/workspace/Models/DefaultFiltersSelector.svelte` - Component for default filters selector
+- `src/lib/components/workspace/Models/FiltersSelector.svelte` - Component for filters selector
+- `src/lib/components/workspace/Models/Knowledge/` - Component folder
+- `src/lib/components/workspace/Models/Knowledge/KnowledgeSelector.svelte` - Component for knowledge selector
+- `src/lib/components/workspace/Models/Knowledge.svelte` - Component for knowledge
+- `src/lib/components/workspace/Models/ModelEditor.svelte` - Editor UI for model
+- `src/lib/components/workspace/Models/ModelMenu.svelte` - Component for model menu
+- `src/lib/components/workspace/Models/PromptSuggestions.svelte` - Component for prompt suggestions
+- `src/lib/components/workspace/Models/ToolsSelector.svelte` - Component for tools selector
+- `src/lib/components/workspace/Models.svelte` - Component for models
+- `src/lib/components/workspace/Prompts/` - Component folder
+- `src/lib/components/workspace/Prompts/PromptEditor.svelte` - Editor UI for prompt
+- `src/lib/components/workspace/Prompts/PromptMenu.svelte` - Component for prompt menu
+- `src/lib/components/workspace/Prompts.svelte` - Component for prompts
+- `src/lib/components/workspace/Tools/` - Component folder
+- `src/lib/components/workspace/Tools/AddToolMenu.svelte` - Component for add tool menu
+- `src/lib/components/workspace/Tools/ToolkitEditor.svelte` - Editor UI for toolkit
+- `src/lib/components/workspace/Tools/ToolMenu.svelte` - Component for tool menu
+- `src/lib/components/workspace/Tools.svelte` - Component for tools
+
+## Static Assets
+
+- `static/` - Public assets served at the site root
+- `static/assets/` - Asset library (images, fonts, emojis)
+- `static/audio/` - Asset folder
+- `static/favicon.png` - File
+- `static/image-placeholder.png` - File
+- `static/manifest.json` - Web app manifest
+- `static/marker-icon-2x.png` - File
+- `static/marker-icon.png` - File
+- `static/marker-shadow.png` - File
+- `static/opensearch.xml` - OpenSearch description
+- `static/pyodide/` - Asset folder
+- `static/robots.txt` - Search engine crawler rules
+- `static/static/` - Asset folder
+- `static/themes/` - Asset folder
+- `static/user.png` - File
+- `static/assets/emojis/` - Emoji SVGs (3838 files, grouped by Unicode codepoint)
+- `static/assets/fonts/` - Webfont files
+- `static/assets/images/` - Background and UI images
+
+## Notes
+
+- The emoji asset folder contains thousands of SVG files; they are referenced by codepoints and not edited manually.
+- Generated folders should not be committed if they appear accidentally in diffs.
