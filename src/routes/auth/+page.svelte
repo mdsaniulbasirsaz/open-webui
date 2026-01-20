@@ -348,8 +348,8 @@
 											<img
 												id="logo"
 												crossorigin="anonymous"
-												src="{WEBUI_BASE_URL}/static/favicon.png"
-												class="size-20 rounded-2xl"
+												src="{WEBUI_BASE_URL}/static/logo.png"
+												class="size-50 rounded-2xl"
 												alt=""
 											/>
 										</div>

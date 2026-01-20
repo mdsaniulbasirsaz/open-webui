@@ -22,23 +22,6 @@
 			]
 		},
 		{
-			name: 'Go',
-			tagline: 'Keep chatting with expanded access',
-			price: '$8',
-			period: '/ month',
-			cta: 'Get Go',
-			featured: false,
-			features: [
-				'Everything in Free and:',
-				'More access to our flagship model GPT-5.2',
-				'More messages',
-				'More uploads',
-				'More image creation',
-				'Longer memory'
-			],
-			note: 'This plan may include ads. Learn more'
-		},
-		{
 			name: 'Plus',
 			tagline: 'Do more with advanced intelligence',
 			price: '$20',
@@ -78,32 +61,6 @@
 				'Expanded, priority-speed Codex agent',
 				'Research preview of new features'
 			]
-		}
-	];
-
-	const teamPlans = [
-		{
-			name: 'Business',
-			tagline: 'A secure, collaborative workspace for startups and growing businesses',
-			price: '$25 / user / month billed annually',
-			cta: 'Try for free',
-			features: [
-				'Everything in Plus and:',
-				'Unlimited GPT-5.2 messages, with generous access to GPT-5.2 Thinking, and access to GPT-5.2 Pro - plus the flexibility to add credits as needed',
-				'60+ apps that bring your tools and data into ChatGPT - like Slack, Google Drive, SharePoint, GitHub, Atlassian, and more',
-				'A secure, dedicated workspace with essential admin controls, SAML SSO, and MFA',
-				'Support for compliance with GDPR, CCPA, and other privacy laws. Aligned with CSA STAR and SOC 2 Type 2',
-				'Business features like apps, data analysis, record mode, canvas, shared projects, and custom workspace GPTs',
-				'Encryption at rest and in transit, and no training on your business data by default. Learn more',
-				'Includes access to Codex and ChatGPT agent for reasoning and taking action across your documents, tools, and codebases'
-			]
-		},
-		{
-			name: 'Enterprise',
-			tagline: '',
-			price: '',
-			cta: 'Contact sales',
-			features: []
 		}
 	];
 
@@ -328,7 +285,7 @@
 								alt="Synapse logo"
 								class="h-10 w-10 rounded-full border border-[rgba(39,20,46,0.14)] object-contain"
 							/>
-							<span class="text-sm font-semibold tracking-[0.12em] text-[rgba(146,39,143,1)]">
+							<span class="text-2xl font-semibold tracking-[0.12em] text-[rgba(146,39,143,1)]">
 								Synapse
 							</span>
 						</div>
@@ -353,7 +310,7 @@
 					</header>
 				</div>
 
-				<section class="mt-8 grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+				<section class="mt-8 grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
 					{#each personalPlans as plan}
 						<article
 							class={`flex h-full flex-col gap-4 rounded-2xl border p-4 sm:p-5 ${
@@ -388,45 +345,6 @@
 							</ul>
 							{#if plan.note}
 								<p class="text-xs text-[#5a4b64]">{plan.note}</p>
-							{/if}
-						</article>
-					{/each}
-				</section>
-
-				<div class="mt-4 text-sm text-[#5a4b64]">
-					Have an existing plan?
-					<span class="font-semibold text-[rgba(146,39,143,1)]">See billing help</span>
-				</div>
-
-				<section class="mt-6 grid gap-3 sm:gap-4 md:grid-cols-2">
-					{#each teamPlans as plan}
-						<article
-							class="flex h-full flex-col gap-4 rounded-2xl border border-[rgba(39,20,46,0.14)] p-4 sm:p-5"
-						>
-							<div class="flex flex-col gap-2">
-								<div class="text-lg font-semibold">{plan.name}</div>
-								{#if plan.tagline}
-									<div class="text-sm text-[#5a4b64]">{plan.tagline}</div>
-								{/if}
-								{#if plan.price}
-									<div class="text-lg font-semibold">{plan.price}</div>
-								{/if}
-								<button
-									class="mt-2 w-fit rounded-full bg-[rgba(146,39,143,1)] px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(146,39,143,0.3)]"
-									type="button"
-								>
-									{plan.cta}
-								</button>
-							</div>
-							{#if plan.features.length}
-								<ul class="space-y-2 text-sm text-[#5a4b64]">
-									{#each plan.features as feature}
-										<li class="flex gap-2">
-											<span class="mt-[2px] text-[rgba(146,39,143,1)]">&#10004;</span>
-											<span>{feature}</span>
-										</li>
-									{/each}
-								</ul>
 							{/if}
 						</article>
 					{/each}
@@ -496,20 +414,20 @@
 
 				<footer class="mt-10 border-t border-[rgba(39,20,46,0.14)] pt-6 text-xs text-[#5a4b64]">
 					<div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-						<div class="flex items-start gap-3 sm:items-center">
+						<a href="" class="flex items-start gap-3 sm:items-center">
 							<img
 								src="/static/logo.png"
 								alt="Synapse logo"
-								class="h-9 w-9 rounded-full border border-[rgba(39,20,46,0.14)] object-contain"
+								class="h-12 w-12 rounded-full border border-[rgba(39,20,46,0.14)] object-contain"
 							/>
 							<div>
-								<div class="text-sm font-semibold text-[#1d1424]">Synapse</div>
+								<div class="text-2xl font-semibold text-[#1d1424]">Synapse</div>
 								<div class="text-xs text-[#5a4b64]">Intelligence for teams and creators.</div>
 							</div>
-						</div>
+						</a>
 						<div class="text-left">
 							<div class="text-sm font-semibold text-[#1d1424]">Contact</div>
-							<div class="mt-2">support@synapse.ai</div>
+							<div class="mt-2">bdrenai@services.bdren.net.bd</div>
 							
 						</div>
 						<div class="text-left lg:text-right">
@@ -523,6 +441,3 @@
 		</div>
 	</div>
 </div>
-
-
-
