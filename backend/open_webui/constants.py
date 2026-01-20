@@ -109,6 +109,23 @@ class ERROR_MESSAGES(str, Enum):
         err if err else "The password does not meet the required validation criteria."
     )
 
+    EMAIL_VERIFICATION_REQUIRED = (
+        "Email verification is required before you can sign in. Please check your inbox."
+    )
+    EMAIL_VERIFICATION_INVALID = "The verification code is invalid. Please try again."
+    EMAIL_VERIFICATION_EXPIRED = (
+        "The verification code has expired. Please request a new code."
+    )
+    EMAIL_VERIFICATION_MAX_ATTEMPTS = (
+        "Too many invalid attempts. Please request a new verification code."
+    )
+    EMAIL_VERIFICATION_RESEND_COOLDOWN = (
+        "Please wait before requesting another verification code."
+    )
+    EMAIL_DELIVERY_FAILED = (
+        "We could not send the verification email. Please contact your administrator."
+    )
+
 
 class TASKS(str, Enum):
     def __str__(self) -> str:

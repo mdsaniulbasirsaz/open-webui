@@ -4,7 +4,7 @@
 
 	import { toast } from 'svelte-sonner';
 
-	import { onMount, getContext, tick } from 'svelte';
+	import { onMount, onDestroy, getContext, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 
@@ -14,6 +14,8 @@
 		getSessionUser,
 		userSignIn,
 		userSignUp,
+		verifySignupEmail,
+		resendSignupEmailVerification,
 		updateUserTimezone
 	} from '$lib/apis/auths';
 
@@ -41,6 +43,28 @@
 	let confirmPassword = '';
 
 	let ldapUsername = '';
+	let verificationEmail = '';
+	let verificationOtp = '';
+	let resendCooldown = 0;
+	let resendTimer: ReturnType<typeof setInterval> | null = null;
+
+	const startResendCooldown = (seconds: number) => {
+		resendCooldown = Math.max(0, seconds || 0);
+		if (resendTimer) {
+			clearInterval(resendTimer);
+		}
+		if (resendCooldown > 0) {
+			resendTimer = setInterval(() => {
+				if (resendCooldown <= 1) {
+					resendCooldown = 0;
+					clearInterval(resendTimer);
+					resendTimer = null;
+				} else {
+					resendCooldown -= 1;
+				}
+			}, 1000);
+		}
+	};
 
 	const setSessionUser = async (sessionUser, redirectPath: string | null = null) => {
 		if (sessionUser) {
@@ -70,7 +94,16 @@
 
 	const signInHandler = async () => {
 		const sessionUser = await userSignIn(email, password).catch((error) => {
-			toast.error(`${error}`);
+			if (error?.requires_email_verification) {
+				verificationEmail = error.email ?? email;
+				verificationOtp = '';
+				mode = 'verify-email';
+				startResendCooldown(0);
+				toast.info($i18n.t('Please verify your email to continue.'));
+				return null;
+			}
+			const message = error?.message ?? error;
+			toast.error(`${message}`);
 			return null;
 		});
 
@@ -87,12 +120,54 @@
 
 		const sessionUser = await userSignUp(name, email, password, generateInitialsImage(name)).catch(
 			(error) => {
-				toast.error(`${error}`);
+				const message = error?.message ?? error;
+				toast.error(`${message}`);
 				return null;
 			}
 		);
 
+		if (sessionUser?.requires_email_verification) {
+			verificationEmail = sessionUser.email ?? email;
+			verificationOtp = '';
+			mode = 'verify-email';
+			startResendCooldown(sessionUser.resend_available_in ?? 0);
+			toast.success($i18n.t('Verification code sent. Check your email.'));
+			return;
+		}
+
 		await setSessionUser(sessionUser);
+	};
+
+	const verifyEmailHandler = async () => {
+		const sessionUser = await verifySignupEmail(verificationEmail, verificationOtp).catch(
+			(error) => {
+				const message = error?.message ?? error;
+				toast.error(`${message}`);
+				return null;
+			}
+		);
+
+		if (sessionUser) {
+			await setSessionUser(sessionUser);
+		}
+	};
+
+	const resendVerificationHandler = async () => {
+		if (!verificationEmail) {
+			toast.error($i18n.t('Please enter your email to resend the code.'));
+			return;
+		}
+
+		const res = await resendSignupEmailVerification(verificationEmail).catch((error) => {
+			const message = error?.message ?? error;
+			toast.error(`${message}`);
+			return null;
+		});
+
+		if (res?.status) {
+			startResendCooldown(res.resend_available_in ?? 0);
+			toast.success($i18n.t('Verification code resent.'));
+		}
 	};
 
 	const ldapSignInHandler = async () => {
@@ -108,6 +183,8 @@
 			await ldapSignInHandler();
 		} else if (mode === 'signin') {
 			await signInHandler();
+		} else if (mode === 'verify-email') {
+			await verifyEmailHandler();
 		} else {
 			await signUpHandler();
 		}
@@ -190,6 +267,12 @@
 			await signInHandler();
 		} else {
 			onboarding = $config?.onboarding ?? false;
+		}
+	});
+
+	onDestroy(() => {
+		if (resendTimer) {
+			clearInterval(resendTimer);
 		}
 	});
 </script>
@@ -286,6 +369,8 @@
 									<div class="text-2xl sm:text-3xl font-semibold text-slate-900 dark:text-white">
 										{#if $config?.onboarding ?? false}
 											{$i18n.t(`Get started with {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+										{:else if mode === 'verify-email'}
+											{$i18n.t('Verify your email')}
 										{:else if mode === 'ldap'}
 											{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, { WEBUI_NAME: $WEBUI_NAME })}
 										{:else if mode === 'signin'}
@@ -302,111 +387,150 @@
 												'does not make any external connections, and your data stays securely on your locally hosted server.'
 											)}
 										</div>
+									{:else if mode === 'verify-email'}
+										<div class="text-xs font-medium text-slate-500 dark:text-slate-400">
+											{$i18n.t('Enter the code sent to')} {verificationEmail}
+										</div>
 									{/if}
 								</div>
 
 								{#if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
-									<div class="flex flex-col gap-3 mt-4">
-										{#if mode === 'signup'}
+									{#if mode === 'verify-email'}
+										<div class="flex flex-col gap-3 mt-4">
 											<div>
 												<label
-													for="name"
+													for="verification-otp"
 													class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
 												>
-													{$i18n.t('Name')}
+													{$i18n.t('Verification code')}
 												</label>
 												<input
-													bind:value={name}
+													bind:value={verificationOtp}
 													type="text"
-													id="name"
+													id="verification-otp"
+													inputmode="numeric"
+													autocomplete="one-time-code"
 													class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
-													autocomplete="name"
-													placeholder={$i18n.t('Enter Your Full Name')}
+													placeholder={$i18n.t('Enter verification code')}
 													required
 												/>
 											</div>
-										{/if}
-
-										{#if mode === 'ldap'}
-											<div>
-												<label
-													for="username"
-													class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
-												>
-													{$i18n.t('Username')}
-												</label>
-												<input
-													bind:value={ldapUsername}
-													type="text"
-													class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
-													autocomplete="username"
-													name="username"
-													id="username"
-													placeholder={$i18n.t('Enter Your Username')}
-													required
-												/>
-											</div>
-										{:else}
-											<div>
-												<label
-													for="email"
-													class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
-												>
-													{$i18n.t('Email')}
-												</label>
-												<input
-													bind:value={email}
-													type="email"
-													id="email"
-													class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
-													autocomplete="email"
-													name="email"
-													placeholder={$i18n.t('Enter Your Email')}
-													required
-												/>
-											</div>
-										{/if}
-
-										<div>
-											<label
-												for="password"
-												class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
+											<button
+												class="text-xs text-slate-600 dark:text-slate-300 underline decoration-slate-400/50 underline-offset-4 transition disabled:opacity-50 disabled:cursor-not-allowed"
+												type="button"
+												disabled={resendCooldown > 0}
+												on:click={resendVerificationHandler}
 											>
-												{$i18n.t('Password')}
-											</label>
-											<SensitiveInput
-												bind:value={password}
-												type="password"
-												id="password"
-												class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
-												placeholder={$i18n.t('Enter Your Password')}
-												autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
-												name="password"
-												required
-											/>
+												{#if resendCooldown > 0}
+													{$i18n.t('Resend code in')} {resendCooldown}s
+												{:else}
+													{$i18n.t('Resend code')}
+												{/if}
+											</button>
 										</div>
+									{:else}
+										<div class="flex flex-col gap-3 mt-4">
+											{#if mode === 'signup'}
+												<div>
+													<label
+														for="name"
+														class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
+													>
+														{$i18n.t('Name')}
+													</label>
+													<input
+														bind:value={name}
+														type="text"
+														id="name"
+														class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
+														autocomplete="name"
+														placeholder={$i18n.t('Enter Your Full Name')}
+														required
+													/>
+												</div>
+											{/if}
 
-										{#if mode === 'signup' && $config?.features?.enable_signup_password_confirmation}
+											{#if mode === 'ldap'}
+												<div>
+													<label
+														for="username"
+														class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
+													>
+														{$i18n.t('Username')}
+													</label>
+													<input
+														bind:value={ldapUsername}
+														type="text"
+														class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
+														autocomplete="username"
+														name="username"
+														id="username"
+														placeholder={$i18n.t('Enter Your Username')}
+														required
+													/>
+												</div>
+											{:else}
+												<div>
+													<label
+														for="email"
+														class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
+													>
+														{$i18n.t('Email')}
+													</label>
+													<input
+														bind:value={email}
+														type="email"
+														id="email"
+														class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
+														autocomplete="email"
+														name="email"
+														placeholder={$i18n.t('Enter Your Email')}
+														required
+													/>
+												</div>
+											{/if}
+
 											<div>
 												<label
-													for="confirm-password"
+													for="password"
 													class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
 												>
-													{$i18n.t('Confirm Password')}
+													{$i18n.t('Password')}
 												</label>
 												<SensitiveInput
-													bind:value={confirmPassword}
+													bind:value={password}
 													type="password"
-													id="confirm-password"
+													id="password"
 													class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
-													placeholder={$i18n.t('Confirm Your Password')}
-													autocomplete="new-password"
-													name="confirm-password"
+													placeholder={$i18n.t('Enter Your Password')}
+													autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
+													name="password"
 													required
 												/>
 											</div>
-										{/if}
-									</div>
+
+											{#if mode === 'signup' && $config?.features?.enable_signup_password_confirmation}
+												<div>
+													<label
+														for="confirm-password"
+														class="text-xs font-semibold text-slate-600 dark:text-slate-300 tracking-wide mb-1 block"
+													>
+														{$i18n.t('Confirm Password')}
+													</label>
+													<SensitiveInput
+														bind:value={confirmPassword}
+														type="password"
+														id="confirm-password"
+														class="w-full rounded-xl border border-gray-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-950/40 px-4 py-2.5 text-sm text-slate-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 outline-none focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/30 transition"
+														placeholder={$i18n.t('Confirm Your Password')}
+														autocomplete="new-password"
+														name="confirm-password"
+														required
+													/>
+												</div>
+											{/if}
+										</div>
+									{/if}
 								{/if}
 								<div class="mt-6">
 									{#if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
@@ -422,15 +546,17 @@
 												class="w-full rounded-full bg-[rgba(146,39,143,1)] text-white shadow-lg shadow-[rgba(146,39,143,0.35)] hover:bg-[rgba(146,39,143,0.9)] transition font-semibold text-sm py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(146,39,143,0.45)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
 												type="submit"
 											>
-												{mode === 'signin'
-													? $i18n.t('Sign in')
-													: ($config?.onboarding ?? false)
-														? $i18n.t('Create Admin Account')
-														: $i18n.t('Create Account')}
+												{mode === 'verify-email'
+													? $i18n.t('Verify email')
+													: mode === 'signin'
+														? $i18n.t('Sign in')
+														: ($config?.onboarding ?? false)
+															? $i18n.t('Create Admin Account')
+															: $i18n.t('Create Account')}
 											</button>
 
-											{#if $config?.features.enable_signup && !($config?.onboarding ?? false)}
-												<div class="mt-4 text-sm text-slate-600 dark:text-slate-300 text-center">
+											{#if $config?.features.enable_signup && !($config?.onboarding ?? false) && mode !== 'verify-email'}
+												<div class="mt-2 text-sm text-slate-600 dark:text-slate-300 text-center">
 													{mode === 'signin'
 														? $i18n.t("Don't have an account?")
 														: $i18n.t('Already have an account?')}
@@ -589,7 +715,7 @@
 								</div>
 							{/if}
 
-							{#if $config?.features.enable_ldap && $config?.features.enable_login_form}
+							{#if $config?.features.enable_ldap && $config?.features.enable_login_form && mode !== 'verify-email'}
 								<div class="mt-4">
 									<button
 										class="flex justify-center items-center text-xs w-full text-center text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline decoration-slate-400/50 underline-offset-4 transition"

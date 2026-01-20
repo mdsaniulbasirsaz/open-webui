@@ -37,8 +37,14 @@ from open_webui.env import (
     WEBUI_AUTH_COOKIE_SECURE,
     WEBUI_AUTH_SIGNOUT_REDIRECT_URL,
     ENABLE_INITIAL_ADMIN_SIGNUP,
+    REQUIRE_EMAIL_VERIFICATION,
+    EMAIL_VERIFICATION_OTP_TTL,
+    EMAIL_VERIFICATION_OTP_LENGTH,
+    EMAIL_VERIFICATION_MAX_ATTEMPTS,
+    EMAIL_VERIFICATION_RESEND_COOLDOWN,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse, Response, JSONResponse
 from open_webui.config import (
     OPENID_PROVIDER_URL,
@@ -67,12 +73,15 @@ from sqlalchemy.orm import Session
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.access_control import get_permissions, has_permission
 from open_webui.utils.groups import apply_default_group_assignment
+from open_webui.utils.email_verification import generate_otp, hash_otp, verify_otp
+from open_webui.utils.email import build_signup_verification_email, send_email
+from open_webui.models.email_verifications import EmailVerifications
 
 from open_webui.utils.redis import get_redis_client
 from open_webui.utils.rate_limit import RateLimiter
 
 
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from ssl import CERT_NONE, CERT_REQUIRED, PROTOCOL_TLS
 
@@ -87,6 +96,57 @@ signin_rate_limiter = RateLimiter(
     redis_client=get_redis_client(), limit=5 * 3, window=60 * 3
 )
 
+
+def _get_duration_seconds(duration: str, default_seconds: int) -> int:
+    try:
+        parsed = parse_duration(duration)
+    except Exception:
+        return default_seconds
+    if not parsed:
+        return default_seconds
+    return int(parsed.total_seconds())
+
+
+async def _issue_email_verification(
+    email: str,
+    user_id: str,
+    intended_role: str,
+    disable_signup_after_verify: bool,
+    webui_name: str,
+    db: Optional[Session] = None,
+) -> int:
+    otp_length = max(4, min(int(EMAIL_VERIFICATION_OTP_LENGTH), 10))
+    otp = generate_otp(otp_length)
+    otp_hash = hash_otp(otp)
+
+    ttl_seconds = _get_duration_seconds(EMAIL_VERIFICATION_OTP_TTL, 15 * 60)
+    now = int(time.time())
+    expires_at = now + ttl_seconds
+
+    attempts = max(1, int(EMAIL_VERIFICATION_MAX_ATTEMPTS))
+    ttl_minutes = max(1, int(round(ttl_seconds / 60)))
+    subject, html, text = build_signup_verification_email(
+        webui_name=webui_name,
+        otp=otp,
+        ttl_minutes=ttl_minutes,
+        recipient=email,
+    )
+    await run_in_threadpool(send_email, email, subject, html, text)
+
+    EmailVerifications.upsert_for_user(
+        user_id=user_id,
+        email=email,
+        code_hash=otp_hash,
+        expires_at=expires_at,
+        attempts_remaining=attempts,
+        intended_role=intended_role,
+        last_sent_at=now,
+        disable_signup_after_verify=disable_signup_after_verify,
+        db=db,
+    )
+
+    return _get_duration_seconds(EMAIL_VERIFICATION_RESEND_COOLDOWN, 60)
+
 ############################
 # GetSessionUser
 ############################
@@ -95,6 +155,21 @@ signin_rate_limiter = RateLimiter(
 class SessionUserResponse(Token, UserProfileImageResponse):
     expires_at: Optional[int] = None
     permissions: Optional[dict] = None
+
+
+class SignupVerificationResponse(BaseModel):
+    requires_email_verification: bool = True
+    email: str
+    resend_available_in: Optional[int] = None
+
+
+class EmailVerificationForm(BaseModel):
+    email: str
+    otp: str
+
+
+class EmailVerificationResendForm(BaseModel):
+    email: str
 
 
 class SessionUserInfoResponse(SessionUserResponse, UserStatus):
@@ -646,6 +721,19 @@ async def signin(
         )
 
     if user:
+        if (
+            REQUIRE_EMAIL_VERIFICATION
+            and user.role == "pending"
+            and EmailVerifications.get_by_email(user.email, db=db)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "message": ERROR_MESSAGES.EMAIL_VERIFICATION_REQUIRED,
+                    "requires_email_verification": True,
+                    "email": user.email,
+                },
+            )
 
         expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
         expires_at = None
@@ -697,7 +785,9 @@ async def signin(
 ############################
 
 
-@router.post("/signup", response_model=SessionUserResponse)
+@router.post(
+    "/signup", response_model=Union[SessionUserResponse, SignupVerificationResponse]
+)
 async def signup(
     request: Request,
     response: Response,
@@ -737,7 +827,21 @@ async def signup(
 
         hashed = get_password_hash(form_data.password)
 
-        role = "admin" if not has_users else request.app.state.config.DEFAULT_USER_ROLE
+        intended_role = (
+            "admin" if not has_users else request.app.state.config.DEFAULT_USER_ROLE
+        )
+        skip_verification = bool(
+            WEBUI_AUTH_TRUSTED_EMAIL_HEADER
+            and WEBUI_AUTH_TRUSTED_EMAIL_HEADER in request.headers
+        )
+        requires_verification = REQUIRE_EMAIL_VERIFICATION and not skip_verification
+        disable_signup_after_verify = False
+        role = intended_role
+
+        if requires_verification:
+            role = "pending"
+            disable_signup_after_verify = not has_users
+
         user = Auths.insert_new_auth(
             form_data.email.lower(),
             hashed,
@@ -748,6 +852,31 @@ async def signup(
         )
 
         if user:
+            if requires_verification:
+                try:
+                    resend_cooldown = await _issue_email_verification(
+                        email=user.email,
+                        user_id=user.id,
+                        intended_role=intended_role,
+                        disable_signup_after_verify=disable_signup_after_verify,
+                        webui_name=request.app.state.WEBUI_NAME,
+                        db=db,
+                    )
+                except Exception as err:
+                    log.error(f"Email verification error: {str(err)}")
+                    EmailVerifications.delete_by_email(user.email, db=db)
+                    Auths.delete_auth_by_id(user.id, db=db)
+                    raise HTTPException(
+                        status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=ERROR_MESSAGES.EMAIL_DELIVERY_FAILED,
+                    )
+
+                return {
+                    "requires_email_verification": True,
+                    "email": user.email,
+                    "resend_available_in": resend_cooldown,
+                }
+
             expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
             expires_at = None
             if expires_delta:
@@ -816,6 +945,162 @@ async def signup(
     except Exception as err:
         log.error(f"Signup error: {str(err)}")
         raise HTTPException(500, detail="An internal error occurred during signup.")
+
+
+@router.post("/signup/verify", response_model=SessionUserResponse)
+async def verify_signup_email(
+    request: Request,
+    response: Response,
+    form_data: EmailVerificationForm,
+    db: Session = Depends(get_session),
+):
+    if not REQUIRE_EMAIL_VERIFICATION:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.ACTION_PROHIBITED
+        )
+
+    email = form_data.email.lower()
+    if not validate_email_format(email):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_EMAIL_FORMAT
+        )
+    record = EmailVerifications.get_by_email(email, db=db)
+    if not record:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.EMAIL_VERIFICATION_EXPIRED
+        )
+
+    now = int(time.time())
+    if record.expires_at and now > record.expires_at:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.EMAIL_VERIFICATION_EXPIRED
+        )
+
+    if record.attempts_remaining <= 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.EMAIL_VERIFICATION_MAX_ATTEMPTS,
+        )
+
+    if not verify_otp(form_data.otp.strip(), record.code_hash):
+        remaining = EmailVerifications.decrement_attempts(email, db=db)
+        if remaining is not None and remaining <= 0:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.EMAIL_VERIFICATION_MAX_ATTEMPTS,
+            )
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.EMAIL_VERIFICATION_INVALID
+        )
+
+    user = Users.get_user_by_email(email, db=db)
+    if not user:
+        EmailVerifications.delete_by_email(email, db=db)
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.USER_NOT_FOUND
+        )
+
+    Users.update_user_role_by_id(user.id, record.intended_role, db=db)
+    EmailVerifications.delete_by_email(email, db=db)
+
+    if record.disable_signup_after_verify:
+        request.app.state.config.ENABLE_SIGNUP = False
+
+    apply_default_group_assignment(
+        request.app.state.config.DEFAULT_GROUP_ID,
+        user.id,
+        db=db,
+    )
+
+    expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+    expires_at = None
+    if expires_delta:
+        expires_at = int(time.time()) + int(expires_delta.total_seconds())
+
+    token = create_token(
+        data={"id": user.id},
+        expires_delta=expires_delta,
+    )
+
+    datetime_expires_at = (
+        datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+        if expires_at
+        else None
+    )
+
+    response.set_cookie(
+        key="token",
+        value=token,
+        expires=datetime_expires_at,
+        httponly=True,
+        samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+        secure=WEBUI_AUTH_COOKIE_SECURE,
+    )
+
+    user_permissions = get_permissions(
+        user.id, request.app.state.config.USER_PERMISSIONS, db=db
+    )
+
+    return {
+        "token": token,
+        "token_type": "Bearer",
+        "expires_at": expires_at,
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": record.intended_role,
+        "profile_image_url": user.profile_image_url,
+        "permissions": user_permissions,
+    }
+
+
+@router.post("/signup/resend")
+async def resend_signup_email(
+    request: Request,
+    form_data: EmailVerificationResendForm,
+    db: Session = Depends(get_session),
+):
+    if not REQUIRE_EMAIL_VERIFICATION:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.ACTION_PROHIBITED
+        )
+
+    email = form_data.email.lower()
+    if not validate_email_format(email):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_EMAIL_FORMAT
+        )
+    record = EmailVerifications.get_by_email(email, db=db)
+    if not record:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.EMAIL_VERIFICATION_EXPIRED
+        )
+
+    cooldown_seconds = _get_duration_seconds(EMAIL_VERIFICATION_RESEND_COOLDOWN, 60)
+    now = int(time.time())
+    if record.last_sent_at and (now - record.last_sent_at) < cooldown_seconds:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=ERROR_MESSAGES.EMAIL_VERIFICATION_RESEND_COOLDOWN,
+        )
+
+    try:
+        resend_cooldown = await _issue_email_verification(
+            email=email,
+            user_id=record.user_id,
+            intended_role=record.intended_role,
+            disable_signup_after_verify=record.disable_signup_after_verify,
+            webui_name=request.app.state.WEBUI_NAME,
+            db=db,
+        )
+    except Exception as err:
+        log.error(f"Email verification resend error: {str(err)}")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ERROR_MESSAGES.EMAIL_DELIVERY_FAILED,
+        )
+
+    return {"status": True, "resend_available_in": resend_cooldown}
 
 
 @router.get("/signout")

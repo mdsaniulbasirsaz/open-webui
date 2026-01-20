@@ -419,6 +419,45 @@ ENABLE_SIGNUP_PASSWORD_CONFIRMATION = (
 )
 
 ####################################
+# Email Verification (Signup OTP)
+####################################
+
+REQUIRE_EMAIL_VERIFICATION = (
+    os.environ.get("REQUIRE_EMAIL_VERIFICATION", "False").lower() == "true"
+)
+EMAIL_VERIFICATION_OTP_TTL = os.environ.get("EMAIL_VERIFICATION_OTP_TTL", "15m")
+EMAIL_VERIFICATION_OTP_LENGTH = os.environ.get("EMAIL_VERIFICATION_OTP_LENGTH", "6")
+try:
+    EMAIL_VERIFICATION_OTP_LENGTH = int(EMAIL_VERIFICATION_OTP_LENGTH)
+except ValueError:
+    EMAIL_VERIFICATION_OTP_LENGTH = 6
+
+EMAIL_VERIFICATION_MAX_ATTEMPTS = os.environ.get(
+    "EMAIL_VERIFICATION_MAX_ATTEMPTS", "5"
+)
+try:
+    EMAIL_VERIFICATION_MAX_ATTEMPTS = int(EMAIL_VERIFICATION_MAX_ATTEMPTS)
+except ValueError:
+    EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
+
+EMAIL_VERIFICATION_RESEND_COOLDOWN = os.environ.get(
+    "EMAIL_VERIFICATION_RESEND_COOLDOWN", "1m"
+)
+
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = os.environ.get("SMTP_PORT", "587")
+try:
+    SMTP_PORT = int(SMTP_PORT)
+except ValueError:
+    SMTP_PORT = 587
+
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER)
+SMTP_TLS = os.environ.get("SMTP_TLS", "true").lower() == "true"
+SMTP_SSL = os.environ.get("SMTP_SSL", "false").lower() == "true"
+
+####################################
 # Admin Account Runtime Creation
 ####################################
 
