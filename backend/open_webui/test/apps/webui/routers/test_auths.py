@@ -1,3 +1,12 @@
+import time
+
+from open_webui.models.email_verifications import EmailVerifications
+from open_webui.utils.auth import get_password_hash
+from open_webui.utils.email_verification import (
+    generate_verification_token,
+    hash_otp,
+    hash_verification_token,
+)
 from test.util.abstract_integration_test import AbstractPostgresTest
 from test.util.mock_user import mock_webui_user
 
@@ -13,6 +22,30 @@ class TestAuths(AbstractPostgresTest):
         cls.users = Users
         cls.auths = Auths
 
+    def _create_email_verification_record(
+        self,
+        user,
+        otp: str,
+        token: str,
+        now: int,
+        token_expires_at: int | None = None,
+        otp_expires_at: int | None = None,
+        last_sent_at: int | None = None,
+    ):
+        EmailVerifications.upsert_for_user(
+            user_id=user.id,
+            email=user.email,
+            code_hash=hash_otp(otp),
+            verification_token_hash=hash_verification_token(token),
+            verification_token_expires_at=token_expires_at or (now + 300),
+            verification_token_used_at=None,
+            expires_at=otp_expires_at or (now + 300),
+            attempts_remaining=3,
+            intended_role="user",
+            last_sent_at=last_sent_at if last_sent_at is not None else now,
+            disable_signup_after_verify=False,
+        )
+
     def test_get_session_user(self):
         with mock_webui_user():
             response = self.fast_api_client.get(self.create_url(""))
@@ -26,8 +59,6 @@ class TestAuths(AbstractPostgresTest):
         }
 
     def test_update_profile(self):
-        from open_webui.utils.auth import get_password_hash
-
         user = self.auths.insert_new_auth(
             email="john.doe@openwebui.com",
             password=get_password_hash("old_password"),
@@ -47,8 +78,6 @@ class TestAuths(AbstractPostgresTest):
         assert db_user.profile_image_url == "/user2.png"
 
     def test_update_password(self):
-        from open_webui.utils.auth import get_password_hash
-
         user = self.auths.insert_new_auth(
             email="john.doe@openwebui.com",
             password=get_password_hash("old_password"),
@@ -74,8 +103,6 @@ class TestAuths(AbstractPostgresTest):
         assert new_auth is not None
 
     def test_signin(self):
-        from open_webui.utils.auth import get_password_hash
-
         user = self.auths.insert_new_auth(
             email="john.doe@openwebui.com",
             password=get_password_hash("password"),
@@ -198,3 +225,162 @@ class TestAuths(AbstractPostgresTest):
             response = self.fast_api_client.get(self.create_url("/api_key"))
         assert response.status_code == 200
         assert response.json() == {"api_key": "abc"}
+
+    def test_otp_verification_invalidates_link(self):
+        from open_webui.routers import auths as auths_router
+
+        original_require = auths_router.REQUIRE_EMAIL_VERIFICATION
+        original_enable_link = auths_router.ENABLE_EMAIL_VERIFICATION_LINK
+        try:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = True
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = True
+
+            email = "verify.otp@openwebui.com"
+            user = self.auths.insert_new_auth(
+                email=email,
+                password=get_password_hash("password"),
+                name="Verify OTP",
+                profile_image_url="/user.png",
+                role="pending",
+            )
+
+            otp = "123456"
+            token = generate_verification_token()
+            now = int(time.time())
+            self._create_email_verification_record(user, otp, token, now)
+
+            response = self.fast_api_client.post(
+                self.create_url("/signup/verify"),
+                json={"email": email, "otp": otp},
+            )
+            assert response.status_code == 200
+
+            link_response = self.fast_api_client.get(
+                self.create_url("/signup/verify/link"),
+                params={"token": token, "email": email},
+            )
+            assert link_response.status_code == 400
+        finally:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = original_require
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = original_enable_link
+
+    def test_link_verification_invalidates_otp(self):
+        from open_webui.routers import auths as auths_router
+
+        original_require = auths_router.REQUIRE_EMAIL_VERIFICATION
+        original_enable_link = auths_router.ENABLE_EMAIL_VERIFICATION_LINK
+        try:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = True
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = True
+
+            email = "verify.link@openwebui.com"
+            user = self.auths.insert_new_auth(
+                email=email,
+                password=get_password_hash("password"),
+                name="Verify Link",
+                profile_image_url="/user.png",
+                role="pending",
+            )
+
+            otp = "654321"
+            token = generate_verification_token()
+            now = int(time.time())
+            self._create_email_verification_record(user, otp, token, now)
+
+            link_response = self.fast_api_client.get(
+                self.create_url("/signup/verify/link"),
+                params={"token": token, "email": email},
+            )
+            assert link_response.status_code == 200
+
+            response = self.fast_api_client.post(
+                self.create_url("/signup/verify"),
+                json={"email": email, "otp": otp},
+            )
+            assert response.status_code == 400
+        finally:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = original_require
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = original_enable_link
+
+    def test_resend_invalidates_old_tokens(self):
+        from open_webui.routers import auths as auths_router
+
+        original_require = auths_router.REQUIRE_EMAIL_VERIFICATION
+        original_enable_link = auths_router.ENABLE_EMAIL_VERIFICATION_LINK
+        original_send_email = auths_router.send_email
+        try:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = True
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = True
+            auths_router.send_email = lambda *args, **kwargs: None
+
+            email = "verify.resend@openwebui.com"
+            user = self.auths.insert_new_auth(
+                email=email,
+                password=get_password_hash("password"),
+                name="Verify Resend",
+                profile_image_url="/user.png",
+                role="pending",
+            )
+
+            otp = "999999"
+            token = generate_verification_token()
+            now = int(time.time())
+            self._create_email_verification_record(
+                user, otp, token, now, last_sent_at=now - 3600
+            )
+
+            resend_response = self.fast_api_client.post(
+                self.create_url("/signup/resend"),
+                json={"email": email},
+            )
+            assert resend_response.status_code == 200
+
+            otp_response = self.fast_api_client.post(
+                self.create_url("/signup/verify"),
+                json={"email": email, "otp": otp},
+            )
+            assert otp_response.status_code == 400
+
+            link_response = self.fast_api_client.get(
+                self.create_url("/signup/verify/link"),
+                params={"token": token, "email": email},
+            )
+            assert link_response.status_code == 400
+        finally:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = original_require
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = original_enable_link
+            auths_router.send_email = original_send_email
+
+    def test_expired_link_token_rejected(self):
+        from open_webui.routers import auths as auths_router
+
+        original_require = auths_router.REQUIRE_EMAIL_VERIFICATION
+        original_enable_link = auths_router.ENABLE_EMAIL_VERIFICATION_LINK
+        try:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = True
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = True
+
+            email = "verify.expired@openwebui.com"
+            user = self.auths.insert_new_auth(
+                email=email,
+                password=get_password_hash("password"),
+                name="Verify Expired",
+                profile_image_url="/user.png",
+                role="pending",
+            )
+
+            otp = "111111"
+            token = generate_verification_token()
+            now = int(time.time())
+            self._create_email_verification_record(
+                user, otp, token, now, token_expires_at=now - 10
+            )
+
+            link_response = self.fast_api_client.get(
+                self.create_url("/signup/verify/link"),
+                params={"token": token, "email": email},
+            )
+            assert link_response.status_code == 400
+        finally:
+            auths_router.REQUIRE_EMAIL_VERIFICATION = original_require
+            auths_router.ENABLE_EMAIL_VERIFICATION_LINK = original_enable_link

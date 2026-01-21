@@ -443,6 +443,13 @@ except ValueError:
 EMAIL_VERIFICATION_RESEND_COOLDOWN = os.environ.get(
     "EMAIL_VERIFICATION_RESEND_COOLDOWN", "1m"
 )
+ENABLE_EMAIL_VERIFICATION_LINK = (
+    os.environ.get("ENABLE_EMAIL_VERIFICATION_LINK", "False").lower() == "true"
+)
+EMAIL_VERIFICATION_LINK_TTL = os.environ.get("EMAIL_VERIFICATION_LINK_TTL", "")
+EMAIL_VERIFICATION_LINK_BASE_URL = os.environ.get(
+    "EMAIL_VERIFICATION_LINK_BASE_URL", ""
+)
 
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = os.environ.get("SMTP_PORT", "587")

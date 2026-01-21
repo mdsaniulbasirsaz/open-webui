@@ -196,6 +196,35 @@ export const verifySignupEmail = async (email: string, otp: string) => {
 	return res;
 };
 
+export const verifySignupEmailLink = async (token: string, email?: string) => {
+	let error = null;
+
+	const params = new URLSearchParams({ token });
+	if (email) {
+		params.set('email', email);
+	}
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/signup/verify/link?${params}`, {
+		method: 'GET',
+		credentials: 'include'
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			error = err?.detail ?? err;
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const resendSignupEmailVerification = async (email: string) => {
 	let error = null;
 
@@ -330,7 +359,7 @@ export const userSignIn = async (email: string, password: string) => {
 		.catch((err) => {
 			console.error(err);
 
-			error = err.detail;
+			error = err?.detail ?? err;
 			return null;
 		});
 

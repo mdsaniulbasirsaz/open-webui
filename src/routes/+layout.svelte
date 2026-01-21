@@ -97,6 +97,7 @@
 	let heartbeatInterval = null;
 
 	const BREAKPOINT = 768;
+	const publicRoutes = new Set(['/auth', '/pricing', '/error']);
 
 	const setupSocket = async (enableWebsocket) => {
 		const _socket = io(`${WEBUI_BASE_URL}` || undefined, {
@@ -791,9 +792,9 @@
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				} else {
-					// Don't redirect if we're already on the auth page
-					// Needed because we pass in tokens from OAuth logins via URL fragments
-					if ($page.url.pathname !== '/auth') {
+					// Don't redirect if we're already on a public page.
+					// Needed because we pass in tokens from OAuth logins via URL fragments.
+					if (!publicRoutes.has($page.url.pathname)) {
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				}

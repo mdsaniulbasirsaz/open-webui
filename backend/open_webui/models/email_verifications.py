@@ -19,6 +19,9 @@ class EmailVerification(Base):
     user_id = Column(String, index=True)
     email = Column(String, index=True)
     code_hash = Column(String)
+    verification_token_hash = Column(String, nullable=True)
+    verification_token_expires_at = Column(Integer, nullable=True)
+    verification_token_used_at = Column(Integer, nullable=True)
     attempts_remaining = Column(Integer)
     expires_at = Column(Integer)
     last_sent_at = Column(Integer)
@@ -33,6 +36,9 @@ class EmailVerificationModel(BaseModel):
     user_id: str
     email: str
     code_hash: str
+    verification_token_hash: Optional[str] = None
+    verification_token_expires_at: Optional[int] = None
+    verification_token_used_at: Optional[int] = None
     attempts_remaining: int
     expires_at: int
     last_sent_at: int
@@ -60,6 +66,9 @@ class EmailVerificationTable:
         user_id: str,
         email: str,
         code_hash: str,
+        verification_token_hash: Optional[str],
+        verification_token_expires_at: Optional[int],
+        verification_token_used_at: Optional[int],
         expires_at: int,
         attempts_remaining: int,
         intended_role: str,
@@ -71,6 +80,9 @@ class EmailVerificationTable:
             record = db.query(EmailVerification).filter_by(email=email).first()
             if record:
                 record.code_hash = code_hash
+                record.verification_token_hash = verification_token_hash
+                record.verification_token_expires_at = verification_token_expires_at
+                record.verification_token_used_at = verification_token_used_at
                 record.expires_at = expires_at
                 record.attempts_remaining = attempts_remaining
                 record.last_sent_at = last_sent_at
@@ -85,6 +97,9 @@ class EmailVerificationTable:
                 user_id=user_id,
                 email=email,
                 code_hash=code_hash,
+                verification_token_hash=verification_token_hash,
+                verification_token_expires_at=verification_token_expires_at,
+                verification_token_used_at=verification_token_used_at,
                 attempts_remaining=attempts_remaining,
                 expires_at=expires_at,
                 last_sent_at=last_sent_at,
@@ -114,6 +129,20 @@ class EmailVerificationTable:
             result = db.query(EmailVerification).filter_by(email=email).delete()
             db.commit()
             return result > 0
+
+    def get_by_token_hash(
+        self, token_hash: str, db: Optional[Session] = None
+    ) -> Optional[EmailVerificationModel]:
+        try:
+            with get_db_context(db) as db:
+                record = (
+                    db.query(EmailVerification)
+                    .filter_by(verification_token_hash=token_hash)
+                    .first()
+                )
+                return EmailVerificationModel.model_validate(record) if record else None
+        except Exception:
+            return None
 
 
 EmailVerifications = EmailVerificationTable()

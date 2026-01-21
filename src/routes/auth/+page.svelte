@@ -15,6 +15,7 @@
 		userSignIn,
 		userSignUp,
 		verifySignupEmail,
+		verifySignupEmailLink,
 		resendSignupEmailVerification,
 		updateUserTimezone
 	} from '$lib/apis/auths';
@@ -27,6 +28,7 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import OnBoarding from '$lib/components/OnBoarding.svelte';
 	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
+	import CheckCircle from '$lib/components/icons/CheckCircle.svelte';
 	import { redirect } from '@sveltejs/kit';
 
 	const i18n = getContext('i18n');
@@ -47,6 +49,12 @@
 	let verificationOtp = '';
 	let resendCooldown = 0;
 	let resendTimer: ReturnType<typeof setInterval> | null = null;
+	let linkVerificationStatus: 'idle' | 'pending' | 'success' | 'error' = 'idle';
+	let linkVerificationError = '';
+	const linkVerificationChecklist = [
+		'Access your workspace when you are ready.',
+		'Explore pricing plans for advanced features.'
+	];
 
 	const startResendCooldown = (seconds: number) => {
 		resendCooldown = Math.max(0, seconds || 0);
@@ -94,15 +102,16 @@
 
 	const signInHandler = async () => {
 		const sessionUser = await userSignIn(email, password).catch((error) => {
-			if (error?.requires_email_verification) {
-				verificationEmail = error.email ?? email;
+			const normalizedError = error?.detail ?? error;
+			if (normalizedError?.requires_email_verification) {
+				verificationEmail = normalizedError.email ?? email;
 				verificationOtp = '';
 				mode = 'verify-email';
 				startResendCooldown(0);
 				toast.info($i18n.t('Please verify your email to continue.'));
 				return null;
 			}
-			const message = error?.message ?? error;
+			const message = normalizedError?.message ?? normalizedError;
 			toast.error(`${message}`);
 			return null;
 		});
@@ -185,6 +194,8 @@
 			await signInHandler();
 		} else if (mode === 'verify-email') {
 			await verifyEmailHandler();
+		} else if (mode === 'verify-email-link') {
+			return;
 		} else {
 			await signUpHandler();
 		}
@@ -258,6 +269,40 @@
 		}
 
 		await oauthCallbackHandler();
+
+		const verificationToken = $page.url.searchParams.get('token');
+		const verificationEmailParam = $page.url.searchParams.get('email');
+		if (verificationToken) {
+			verificationEmail = (verificationEmailParam ?? '').trim();
+			verificationOtp = '';
+			mode = 'verify-email-link';
+			linkVerificationStatus = 'pending';
+			linkVerificationError = '';
+
+			const sessionUser = await verifySignupEmailLink(
+				verificationToken,
+				verificationEmail || undefined
+			).catch((error) => {
+				const message = error?.message ?? error;
+				linkVerificationStatus = 'error';
+				linkVerificationError = message;
+				toast.error(`${message}`);
+				return null;
+			});
+
+			if (sessionUser) {
+				linkVerificationStatus = 'success';
+				email = verificationEmail;
+			} else if (linkVerificationStatus !== 'error') {
+				linkVerificationStatus = 'error';
+			}
+
+			const url = new URL(window.location.href);
+			url.searchParams.delete('token');
+			url.searchParams.delete('email');
+			window.history.replaceState({}, '', url.toString());
+		}
+
 		form = $page.url.searchParams.get('form');
 
 		loaded = true;
@@ -367,14 +412,22 @@
 										{$WEBUI_NAME}
 									</div>
 									<div class="text-2xl sm:text-3xl font-semibold text-slate-900 dark:text-white">
-										{#if $config?.onboarding ?? false}
-											{$i18n.t(`Get started with {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
-										{:else if mode === 'verify-email'}
-											{$i18n.t('Verify your email')}
-										{:else if mode === 'ldap'}
-											{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, { WEBUI_NAME: $WEBUI_NAME })}
-										{:else if mode === 'signin'}
-											{$i18n.t(`Sign in to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+									{#if $config?.onboarding ?? false}
+										{$i18n.t(`Get started with {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+									{:else if mode === 'verify-email-link'}
+										{#if linkVerificationStatus === 'success'}
+											{$i18n.t('Email verified')}
+										{:else if linkVerificationStatus === 'error'}
+											{$i18n.t('Verification link issue')}
+										{:else}
+											{$i18n.t('Verifying your email')}
+										{/if}
+									{:else if mode === 'verify-email'}
+										{$i18n.t('Verify your email')}
+									{:else if mode === 'ldap'}
+										{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, { WEBUI_NAME: $WEBUI_NAME })}
+									{:else if mode === 'signin'}
+										{$i18n.t(`Sign in to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 										{:else}
 											{$i18n.t(`Sign up to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
 										{/if}
@@ -387,6 +440,17 @@
 												'does not make any external connections, and your data stays securely on your locally hosted server.'
 											)}
 										</div>
+									{:else if mode === 'verify-email-link'}
+										<div class="text-xs font-medium text-slate-500 dark:text-slate-400">
+											{#if linkVerificationStatus === 'pending'}
+												{$i18n.t('We are verifying your email.')}
+											{:else if linkVerificationStatus === 'success'}
+												{$i18n.t('Your email is verified. Continue to pricing for next steps.')}
+											{:else}
+												{linkVerificationError ||
+													$i18n.t('This verification link is invalid or expired.')}
+											{/if}
+										</div>
 									{:else if mode === 'verify-email'}
 										<div class="text-xs font-medium text-slate-500 dark:text-slate-400">
 											{$i18n.t('Enter the code sent to')} {verificationEmail}
@@ -394,7 +458,77 @@
 									{/if}
 								</div>
 
-								{#if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
+								{#if mode === 'verify-email-link'}
+									<div class="mt-6 flex flex-col gap-5 text-center">
+										{#if linkVerificationStatus === 'pending'}
+											<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700 shadow-sm">
+												<Spinner className="size-6" />
+											</div>
+											<div class="text-sm text-slate-600 dark:text-slate-300">
+												{$i18n.t('Checking your verification link...')}
+											</div>
+										{:else if linkVerificationStatus === 'success'}
+											<div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left shadow-lg">
+												<div class="flex items-start gap-4">
+													<div class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+														<CheckCircle className="size-7" strokeWidth="2" />
+													</div>
+													<div class="flex-1">
+														<div class="text-base font-semibold text-emerald-800">
+															{$i18n.t('Verification complete')}
+														</div>
+														<div class="mt-1 text-sm text-emerald-700/90">
+															{$i18n.t('Your email is verified and your account is ready.')}
+														</div>
+														<div class="mt-3 text-xs text-emerald-700/80">
+															{$i18n.t('Verified email:')} {verificationEmail || email}
+														</div>
+													</div>
+												</div>
+												<div class="mt-4 space-y-2 text-sm text-emerald-800">
+													{#each linkVerificationChecklist as item}
+														<div class="flex items-start gap-2">
+															<CheckCircle
+																className="mt-[1px] size-4 text-emerald-600"
+																strokeWidth="2"
+															/>
+															<span>{item}</span>
+														</div>
+													{/each}
+												</div>
+											</div>
+											<div class="flex flex-col gap-2">
+												<button
+													class="w-full rounded-full bg-[rgba(146,39,143,1)] text-white shadow-lg shadow-[rgba(146,39,143,0.35)] hover:bg-[rgba(146,39,143,0.9)] transition font-semibold text-sm py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(146,39,143,0.45)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
+													type="button"
+													on:click={() => goto('/pricing')}
+												>
+													{$i18n.t('View Pricing Plans')}
+												</button>
+											</div>
+										{:else}
+											<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-sm font-semibold">
+												!
+											</div>
+											<div class="text-sm text-slate-600 dark:text-slate-300">
+												{linkVerificationError ||
+													$i18n.t('This verification link is invalid or expired.')}
+											</div>
+											<div class="flex flex-col gap-2">
+												<button
+													class="w-full rounded-full bg-[rgba(146,39,143,1)] text-white shadow-lg shadow-[rgba(146,39,143,0.35)] hover:bg-[rgba(146,39,143,0.9)] transition font-semibold text-sm py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(146,39,143,0.45)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
+													type="button"
+													on:click={() => {
+														mode = 'verify-email';
+														verificationOtp = '';
+													}}
+												>
+													{$i18n.t('Use verification code')}
+												</button>
+											</div>
+										{/if}
+									</div>
+								{:else if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
 									{#if mode === 'verify-email'}
 										<div class="flex flex-col gap-3 mt-4">
 											<div>
@@ -532,72 +666,74 @@
 										</div>
 									{/if}
 								{/if}
-								<div class="mt-6">
-									{#if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
-										{#if mode === 'ldap'}
-											<button
-												class="w-full rounded-full bg-[rgba(146,39,143,1)] text-white shadow-lg shadow-[rgba(146,39,143,0.35)] hover:bg-[rgba(146,39,143,0.9)] transition font-semibold text-sm py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(146,39,143,0.45)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
-												type="submit"
-											>
-												{$i18n.t('Authenticate')}
-											</button>
-										{:else}
-											<button
-												class="w-full rounded-full bg-[rgba(146,39,143,1)] text-white shadow-lg shadow-[rgba(146,39,143,0.35)] hover:bg-[rgba(146,39,143,0.9)] transition font-semibold text-sm py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(146,39,143,0.45)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
-												type="submit"
-											>
-												{mode === 'verify-email'
-													? $i18n.t('Verify email')
-													: mode === 'signin'
-														? $i18n.t('Sign in')
-														: ($config?.onboarding ?? false)
-															? $i18n.t('Create Admin Account')
-															: $i18n.t('Create Account')}
-											</button>
+								{#if mode !== 'verify-email-link'}
+									<div class="mt-6">
+										{#if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
+											{#if mode === 'ldap'}
+												<button
+													class="w-full rounded-full bg-[rgba(146,39,143,1)] text-white shadow-lg shadow-[rgba(146,39,143,0.35)] hover:bg-[rgba(146,39,143,0.9)] transition font-semibold text-sm py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(146,39,143,0.45)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
+													type="submit"
+												>
+													{$i18n.t('Authenticate')}
+												</button>
+											{:else}
+												<button
+													class="w-full rounded-full bg-[rgba(146,39,143,1)] text-white shadow-lg shadow-[rgba(146,39,143,0.35)] hover:bg-[rgba(146,39,143,0.9)] transition font-semibold text-sm py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(146,39,143,0.45)] focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900"
+													type="submit"
+												>
+													{mode === 'verify-email'
+														? $i18n.t('Verify email')
+														: mode === 'signin'
+															? $i18n.t('Sign in')
+															: ($config?.onboarding ?? false)
+																? $i18n.t('Create Admin Account')
+																: $i18n.t('Create Account')}
+												</button>
 
-											{#if mode === 'signin'}
-												<div class="mt-3 text-xs text-right">
-													<button
-														class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline decoration-slate-400/50 underline-offset-4 transition"
-														type="button"
-														on:click={() => {
-															toast.info(
-																$i18n.t('Please contact your administrator to reset your password.')
-															);
-														}}
-													>
-														{$i18n.t('Forgot password?')}
-													</button>
-												</div>
-											{/if}
+												{#if mode === 'signin'}
+													<div class="mt-3 text-xs text-right">
+														<button
+															class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline decoration-slate-400/50 underline-offset-4 transition"
+															type="button"
+															on:click={() => {
+																toast.info(
+																	$i18n.t('Please contact your administrator to reset your password.')
+																);
+															}}
+														>
+															{$i18n.t('Forgot password?')}
+														</button>
+													</div>
+												{/if}
 
-											{#if $config?.features.enable_signup && !($config?.onboarding ?? false) && mode !== 'verify-email'}
-												<div class="mt-2 text-sm text-slate-600 dark:text-slate-300 text-center">
-													{mode === 'signin'
-														? $i18n.t("Don't have an account?")
-														: $i18n.t('Already have an account?')}
+												{#if $config?.features.enable_signup && !($config?.onboarding ?? false) && mode !== 'verify-email' && mode !== 'verify-email-link'}
+													<div class="mt-2 text-sm text-slate-600 dark:text-slate-300 text-center">
+														{mode === 'signin'
+															? $i18n.t("Don't have an account?")
+															: $i18n.t('Already have an account?')}
 
-													<button
-														class="font-semibold underline decoration-amber-400/60 underline-offset-4 text-slate-900 dark:text-white"
-														type="button"
-														on:click={() => {
-															if (mode === 'signin') {
-																mode = 'signup';
-															} else {
-																mode = 'signin';
-															}
-														}}
-													>
-														{mode === 'signin' ? $i18n.t('Sign up') : $i18n.t('Sign in')}
-													</button>
-												</div>
+														<button
+															class="font-semibold underline decoration-amber-400/60 underline-offset-4 text-slate-900 dark:text-white"
+															type="button"
+															on:click={() => {
+																if (mode === 'signin') {
+																	mode = 'signup';
+																} else {
+																	mode = 'signin';
+																}
+															}}
+														>
+															{mode === 'signin' ? $i18n.t('Sign up') : $i18n.t('Sign in')}
+														</button>
+													</div>
+												{/if}
 											{/if}
 										{/if}
-									{/if}
-								</div>
+									</div>
+								{/if}
 							</form>
 
-							{#if Object.keys($config?.oauth?.providers ?? {}).length > 0}
+							{#if mode !== 'verify-email-link' && Object.keys($config?.oauth?.providers ?? {}).length > 0}
 								<div class="inline-flex items-center justify-center w-full">
 									<hr class="w-24 h-px my-6 border-0 bg-slate-300/70 dark:bg-white/10" />
 									{#if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
@@ -731,7 +867,7 @@
 								</div>
 							{/if}
 
-							{#if $config?.features.enable_ldap && $config?.features.enable_login_form && mode !== 'verify-email'}
+							{#if $config?.features.enable_ldap && $config?.features.enable_login_form && mode !== 'verify-email' && mode !== 'verify-email-link'}
 								<div class="mt-4">
 									<button
 										class="flex justify-center items-center text-xs w-full text-center text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline decoration-slate-400/50 underline-offset-4 transition"
