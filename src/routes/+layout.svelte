@@ -97,7 +97,7 @@
 	let heartbeatInterval = null;
 
 	const BREAKPOINT = 768;
-	const publicRoutes = new Set(['/auth', '/pricing', '/error']);
+	const publicRoutes = new Set(['/auth', '/pricing', '/error', '/cancel', '/success', '/failed']);
 
 	const setupSocket = async (enableWebsocket) => {
 		const _socket = io(`${WEBUI_BASE_URL}` || undefined, {

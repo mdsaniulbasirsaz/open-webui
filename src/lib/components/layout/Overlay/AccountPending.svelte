@@ -1,5 +1,12 @@
 ﻿<script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
+
+	import {
+		createBkashPayment,
+		executeBkashPayment,
+		queryBkashPayment
+	} from '$lib/apis/payments';
 
 	const i18n = getContext('i18n');
 	const currentYear = new Date().getFullYear();
@@ -7,12 +14,15 @@
 	const personalPlans = [
 		{
 			name: 'Free',
+			planId: 'free',
 			tagline: 'Intelligence for everyday tasks',
 			price: '$0',
+			amount: 0,
+			currency: 'BDT',
 			period: '/ month',
 			cta: 'Get Free',
 			featured: false,
-			note: '',
+			note: 'Have an existing plan? See billing help',
 			features: [
 				'Limited access to flagship model GPT-5.2',
 				'Limited messages and uploads',
@@ -22,9 +32,32 @@
 			]
 		},
 		{
+			name: 'Go',
+			planId: 'go',
+			tagline: 'Keep chatting with expanded access',
+			price: '$8',
+			amount: 8,
+			currency: 'BDT',
+			period: '/ month',
+			cta: 'Get Go',
+			featured: false,
+			note: 'This plan may include ads. Learn more',
+			features: [
+				'Everything in Free and:',
+				'More access to our flagship model GPT-5.2',
+				'More messages',
+				'More uploads',
+				'More image creation',
+				'Longer memory'
+			]
+		},
+		{
 			name: 'Plus',
+			planId: 'plus',
 			tagline: 'Do more with advanced intelligence',
 			price: '$20',
+			amount: 20,
+			currency: 'BDT',
 			period: '/ month',
 			cta: 'Get Plus',
 			featured: true,
@@ -43,8 +76,11 @@
 		},
 		{
 			name: 'Pro',
+			planId: 'pro',
 			tagline: 'Full access to the best of ChatGPT',
 			price: '$200',
+			amount: 200,
+			currency: 'BDT',
 			period: '/ month',
 			cta: 'Get Pro',
 			featured: false,
@@ -61,17 +97,48 @@
 				'Expanded, priority-speed Codex agent',
 				'Research preview of new features'
 			]
+		},
+		{
+			name: 'Business',
+			planId: 'business',
+			tagline: 'A secure, collaborative workspace for startups and growing businesses',
+			price: '$25',
+			amount: 25,
+			currency: 'BDT',
+			period: '/ user / month billed annually',
+			cta: 'Try for free',
+			featured: false,
+			note: '',
+			features: [
+				'Everything in Plus and:',
+				'Unlimited GPT-5.2 messages, with generous access to GPT-5.2 Thinking, and access to GPT-5.2 Pro, plus the flexibility to add credits as needed',
+				'60+ apps that bring your tools and data into ChatGPT, like Slack, Google Drive, SharePoint, GitHub, Atlassian, and more',
+				'A secure, dedicated workspace with essential admin controls, SAML SSO, and MFA',
+				'Support for compliance with GDPR, CCPA, and other privacy laws. Aligned with CSA STAR and SOC 2 Type 2',
+				'Business features like apps, data analysis, record mode, canvas, shared projects, and custom workspace GPTs',
+				'Encryption at rest and in transit, and no training on your business data by default. Learn more',
+				'Includes access to Codex and ChatGPT agent for reasoning and taking action across your documents, tools, and codebases'
+			]
 		}
 	];
 
 	const tokenUsage = [
 		'Tokens are used for messages, tool calls, uploads, and image generation.',
 		'Each plan includes a monthly token budget that resets every billing cycle.',
+		'Higher plans expand token limits and response speed.',
 		'Business and Enterprise can add flexible credits for extra usage.',
 		'Track remaining tokens and add credits from billing.'
 	];
 
 	const comparisonColumns = ['Free', 'Go', 'Plus', 'Pro', 'Business', 'Enterprise'];
+	const comparisonCtas = [
+		{ label: 'Get Free' },
+		{ label: 'Get Go' },
+		{ label: 'Get Plus' },
+		{ label: 'Get Pro' },
+		{ label: 'Get Business' },
+		{ label: 'Contact sales' }
+	];
 
 	const comparisonGroups = [
 		{
@@ -109,24 +176,34 @@
 				{
 					feature: 'Legacy models',
 					values: ['No', 'No', 'Yes', 'Yes', 'Yes', 'Yes']
-				},
+				}
+			]
+		},
+		{
+			title: 'Response times',
+			rows: [
 				{
 					feature: 'Response times',
 					values: [
-						'Limited on bandwidth & availability',
-						'Limited on bandwidth & availability',
+						'Limited on bandwidth and availability',
+						'Limited on bandwidth and availability',
 						'Fast',
 						'Fast',
 						'Fast',
 						'Fastest'
 					]
-				},
+				}
+			]
+		},
+		{
+			title: 'Context window',
+			rows: [{ feature: 'Context window', values: ['16K', '32K', '32K', '128K', '32K', '128K'] }]
+		},
+		{
+			title: 'Regular updates',
+			rows: [
 				{
-					feature: 'Context window',
-					values: ['16K', '32K', '32K', '128K', '32K', '128K']
-				},
-				{
-					feature: 'Regular quality & speed updates as models improve',
+					feature: 'Regular quality and speed updates as models improve',
 					values: ['Yes', 'Yes', 'Yes', 'Yes', 'Yes', 'Yes']
 				}
 			]
@@ -269,6 +346,231 @@
 			]
 		}
 	];
+
+	let paymentStatus: 'idle' | 'processing' | 'success' | 'error' | 'canceled' = 'idle';
+	let paymentMessage = '';
+	let paymentId = '';
+	let processingPlanId = '';
+
+	const normalizeStatusValue = (status: string) => status.trim().toLowerCase();
+
+	const isSuccessStatus = (status: string) =>
+		['executed', 'confirmed', 'success', 'completed'].includes(normalizeStatusValue(status));
+
+	const isCanceledStatus = (status: string) => {
+		const normalized = normalizeStatusValue(status);
+		return normalized.includes('cancel') || normalized === 'aborted' || normalized === 'abort';
+	};
+
+	const isFailureStatus = (status: string) => {
+		const normalized = normalizeStatusValue(status);
+		return (
+			normalized.includes('fail') ||
+			normalized.includes('error') ||
+			normalized.includes('reject') ||
+			normalized.includes('declin')
+		);
+	};
+
+	const isPendingStatus = (status: string) => {
+		const normalized = normalizeStatusValue(status);
+		return (
+			normalized.includes('pending') ||
+			normalized.includes('created') ||
+			normalized.includes('initiated')
+		);
+	};
+
+	const getStatusBadgeClasses = (status: string) => {
+		if (status === 'success') {
+			return 'bg-emerald-100 text-emerald-700';
+		}
+		if (status === 'canceled') {
+			return 'bg-rose-100 text-rose-700';
+		}
+		if (status === 'error') {
+			return 'bg-rose-100 text-rose-700';
+		}
+		return 'bg-amber-100 text-amber-700';
+	};
+
+	const getReturnStatus = (searchParams: URLSearchParams) => {
+		const rawStatus =
+			searchParams.get('status') ||
+			searchParams.get('statusMessage') ||
+			searchParams.get('message');
+		const statusCode = searchParams.get('statusCode');
+
+		if (rawStatus) {
+			const normalized = normalizeStatusValue(rawStatus);
+			if (isCanceledStatus(normalized)) {
+				return 'canceled';
+			}
+			if (isFailureStatus(normalized)) {
+				return 'failed';
+			}
+			if (isSuccessStatus(normalized)) {
+				return 'success';
+			}
+		}
+
+		if (statusCode) {
+			return statusCode === '0000' ? 'success' : 'failed';
+		}
+
+		return null;
+	};
+
+	const applyPaymentOutcome = (status: string, message?: string) => {
+		const normalized = status ? normalizeStatusValue(status) : 'unknown';
+		if (isSuccessStatus(normalized)) {
+			paymentStatus = 'success';
+			paymentMessage = $i18n.t('Payment confirmed. Your plan is now active.');
+			return;
+		}
+		if (isCanceledStatus(normalized)) {
+			paymentStatus = 'canceled';
+			paymentMessage = message || $i18n.t('Payment was canceled.');
+			return;
+		}
+		if (isPendingStatus(normalized)) {
+			paymentStatus = 'processing';
+			paymentMessage = $i18n.t('Payment is still pending. Please try again.');
+			return;
+		}
+		if (isFailureStatus(normalized)) {
+			paymentStatus = 'error';
+			paymentMessage = message || $i18n.t('Payment failed. Please try again.');
+			return;
+		}
+		paymentStatus = 'error';
+		paymentMessage = message || $i18n.t('Payment could not be confirmed.');
+	};
+
+	const normalizePaymentError = (err: unknown, fallback: string) => {
+		if (!err) {
+			return fallback;
+		}
+		if (typeof err === 'string') {
+			return err;
+		}
+		if (typeof err === 'object') {
+			const errRecord = err as Record<string, unknown>;
+			if (typeof errRecord.detail === 'string') {
+				return errRecord.detail;
+			}
+			if (typeof errRecord.message === 'string') {
+				return errRecord.message;
+			}
+		}
+		return fallback;
+	};
+
+	const handlePaymentReturn = async (returnedPaymentId: string, returnStatus: string | null) => {
+		if (!returnedPaymentId) {
+			return;
+		}
+
+		if (!localStorage.token) {
+			paymentStatus = 'error';
+			paymentMessage = $i18n.t('Please sign in to complete payment.');
+			return;
+		}
+
+		paymentId = returnedPaymentId;
+
+		if (returnStatus === 'canceled') {
+			paymentStatus = 'canceled';
+			paymentMessage = $i18n.t('Payment was canceled.');
+			return;
+		}
+
+		paymentStatus = 'processing';
+		paymentMessage = $i18n.t('Finalizing your payment...');
+
+		if (returnStatus === 'failed') {
+			try {
+				const result = await queryBkashPayment(localStorage.token, returnedPaymentId);
+				applyPaymentOutcome(result?.status ?? 'unknown');
+			} catch (err) {
+				paymentStatus = 'error';
+				paymentMessage = normalizePaymentError(err, $i18n.t('Payment failed. Please try again.'));
+			}
+			return;
+		}
+
+		try {
+			const result = await executeBkashPayment(localStorage.token, {
+				payment_id: returnedPaymentId
+			});
+			applyPaymentOutcome(result?.status ?? 'unknown', result?.message);
+		} catch (err) {
+			const executeErrorMessage = normalizePaymentError(err, '');
+			try {
+				const result = await queryBkashPayment(localStorage.token, returnedPaymentId);
+				applyPaymentOutcome(result?.status ?? 'unknown', executeErrorMessage);
+			} catch (queryError) {
+				paymentStatus = 'error';
+				paymentMessage =
+					executeErrorMessage ||
+					normalizePaymentError(queryError, $i18n.t('Unable to verify payment status.'));
+			}
+		}
+	};
+
+	const handleCheckout = async (plan) => {
+		if (plan.amount <= 0) {
+			toast.success($i18n.t('Free plan selected.'));
+			return;
+		}
+
+		if (!localStorage.token) {
+			toast.error($i18n.t('Please sign in to continue.'));
+			return;
+		}
+
+		paymentStatus = 'processing';
+		paymentMessage = $i18n.t('Redirecting to bKash...');
+		processingPlanId = plan.planId;
+
+		try {
+			const result = await createBkashPayment(localStorage.token, {
+				plan_id: plan.planId,
+				amount: plan.amount,
+				currency: plan.currency
+			});
+			const redirectUrl = result?.bkash_url ?? result?.bkashURL;
+			paymentId = result?.payment_id ?? '';
+
+			if (redirectUrl) {
+				window.location.href = redirectUrl;
+				return;
+			}
+
+			paymentStatus = 'error';
+			paymentMessage = $i18n.t('Unable to start payment.');
+			processingPlanId = '';
+		} catch (err) {
+			const message = normalizePaymentError(err, $i18n.t('Unable to start payment.'));
+			paymentStatus = 'error';
+			paymentMessage = message;
+			processingPlanId = '';
+			toast.error(message);
+		}
+	};
+
+	onMount(() => {
+		const searchParams = new URLSearchParams(window.location.search);
+		const returnedPaymentId =
+			searchParams.get('paymentID') || searchParams.get('payment_id') || '';
+		const returnStatus = getReturnStatus(searchParams);
+		if (returnedPaymentId) {
+			handlePaymentReturn(returnedPaymentId, returnStatus);
+		} else if (returnStatus === 'canceled') {
+			paymentStatus = 'canceled';
+			paymentMessage = $i18n.t('Payment was canceled.');
+		}
+	});
 </script>
 
 <div class="fixed inset-0 z-[999] bg-white text-[#1d1424]">
@@ -329,10 +631,16 @@
 									{/if}
 								</div>
 								<button
-									class="mt-2 w-fit rounded-full bg-[rgba(146,39,143,1)] px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(146,39,143,0.3)]"
+									class="mt-2 w-fit rounded-full bg-[rgba(146,39,143,1)] px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(146,39,143,0.3)] transition disabled:cursor-not-allowed disabled:opacity-60"
 									type="button"
+									disabled={paymentStatus === 'processing' || processingPlanId === plan.planId}
+									on:click={() => handleCheckout(plan)}
 								>
-									{plan.cta}
+									{#if processingPlanId === plan.planId}
+										{$i18n.t('Processing...')}
+									{:else}
+										{plan.cta}
+									{/if}
 								</button>
 							</div>
 							<ul class="space-y-2 text-sm text-[#5a4b64]">
@@ -350,6 +658,37 @@
 					{/each}
 				</section>
 
+				{#if paymentStatus !== 'idle'}
+					<section
+						class="mt-8 rounded-2xl border border-[rgba(39,20,46,0.12)] bg-white p-4 sm:p-5"
+					>
+						<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+							<div class="flex items-center gap-3">
+								<span
+									class={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusBadgeClasses(
+										paymentStatus
+									)}`}
+								>
+									{$i18n.t(
+										paymentStatus === 'processing'
+											? 'Processing'
+											: paymentStatus === 'canceled'
+												? 'Canceled'
+												: paymentStatus
+									)}
+								</span>
+								<div class="text-sm font-semibold text-[#1d1424]">
+									{$i18n.t('Payment status')}
+								</div>
+							</div>
+							{#if paymentId}
+								<div class="text-xs text-[#5a4b64]">{$i18n.t('Payment ID')}: {paymentId}</div>
+							{/if}
+						</div>
+						<p class="mt-3 text-sm text-[#5a4b64]">{paymentMessage}</p>
+					</section>
+				{/if}
+
 				<section class="mt-8 rounded-2xl border border-[rgba(146,39,143,0.12)] bg-[rgba(146,39,143,0.06)] p-4 sm:p-5">
 					<h2 class="text-lg font-semibold">Token usage when you purchase a plan</h2>
 					<ul class="mt-3 space-y-2 text-sm text-[#5a4b64]">
@@ -364,6 +703,16 @@
 
 				<section class="mt-8">
 					<h2 class="text-lg font-semibold">Compare features across plans</h2>
+					<div class="mt-3 flex flex-wrap gap-2">
+						{#each comparisonCtas as cta}
+							<button
+								class="rounded-full border border-[rgba(146,39,143,0.3)] px-3 py-1 text-xs font-semibold text-[rgba(146,39,143,1)] transition hover:bg-[rgba(146,39,143,0.12)] hover:text-[#1d1424]"
+								type="button"
+							>
+								{cta.label}
+							</button>
+						{/each}
+					</div>
 					<div class="mt-4 overflow-x-auto rounded-2xl border border-[rgba(39,20,46,0.14)]">
 						<table class="min-w-[760px] w-full border-collapse text-sm">
 							<thead class="bg-[rgba(146,39,143,0.08)] text-left">

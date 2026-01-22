@@ -21,3 +21,20 @@
 ## Responsive Notes
 - Stack cards on mobile; maintain readable spacing.
 - Make the comparison table horizontally scrollable on small screens.
+# Pricing Page Plan
+
+## Intent
+- Add a pricing section to the pending account overlay so users can review plan options while waiting for activation.
+- Use the accent color `rgba(146, 39, 143, 1)` for key UI elements (CTAs, borders, highlights).
+- Include a short token-usage explanation related to plan purchases.
+
+## Layout
+- Keep the current pending-account messaging at the top.
+- Add a pricing header (title + subtitle) and a token-usage callout.
+- Add a responsive grid of plan cards (Free, Go, Plus, Pro, Business).
+- Add a compare section with a CTA strip and a horizontal comparison table covering all listed features.
+
+## Implementation Notes
+- Use data arrays in the Svelte component to keep markup concise and avoid repeated blocks.
+- Add component-scoped CSS variables for the accent color and background gradient.
+- Ensure the pricing area scrolls on smaller screens without hiding the existing actions.

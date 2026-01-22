@@ -91,6 +91,7 @@ from open_webui.routers import (
     prompts,
     evaluations,
     tools,
+    payments,
     users,
     utils,
     scim,
@@ -206,6 +207,20 @@ from open_webui.config import (
     AUDIO_TTS_AZURE_SPEECH_REGION,
     AUDIO_TTS_AZURE_SPEECH_BASE_URL,
     AUDIO_TTS_AZURE_SPEECH_OUTPUT_FORMAT,
+    # bKash
+    BKASH_BASE_URL,
+    BKASH_APP_KEY,
+    BKASH_APP_SECRET,
+    BKASH_USERNAME,
+    BKASH_PASSWORD,
+    BKASH_CALLBACK_URL,
+    BKASH_PAYER_REFERENCE,
+    BKASH_WEBHOOK_SECRET,
+    BKASH_TIMEOUT_SECONDS,
+    BKASH_CHECKOUT_URL_USER_NAME,
+    BKASH_CHECKOUT_URL_PASSWORD,
+    BKASH_CHECKOUT_URL_APP_KEY,
+    BKASH_CHECKOUT_URL_APP_SECRET,
     PLAYWRIGHT_WS_URL,
     PLAYWRIGHT_TIMEOUT,
     FIRECRAWL_API_BASE_URL,
@@ -816,6 +831,26 @@ app.state.config.ENABLE_OAUTH_ROLE_MANAGEMENT = ENABLE_OAUTH_ROLE_MANAGEMENT
 app.state.config.OAUTH_ROLES_CLAIM = OAUTH_ROLES_CLAIM
 app.state.config.OAUTH_ALLOWED_ROLES = OAUTH_ALLOWED_ROLES
 app.state.config.OAUTH_ADMIN_ROLES = OAUTH_ADMIN_ROLES
+
+########################################
+#
+# BKASH
+#
+########################################
+
+app.state.config.BKASH_BASE_URL = BKASH_BASE_URL
+app.state.config.BKASH_APP_KEY = BKASH_APP_KEY
+app.state.config.BKASH_APP_SECRET = BKASH_APP_SECRET
+app.state.config.BKASH_USERNAME = BKASH_USERNAME
+app.state.config.BKASH_PASSWORD = BKASH_PASSWORD
+app.state.config.BKASH_CALLBACK_URL = BKASH_CALLBACK_URL
+app.state.config.BKASH_PAYER_REFERENCE = BKASH_PAYER_REFERENCE
+app.state.config.BKASH_WEBHOOK_SECRET = BKASH_WEBHOOK_SECRET
+app.state.config.BKASH_TIMEOUT_SECONDS = BKASH_TIMEOUT_SECONDS
+app.state.config.BKASH_CHECKOUT_URL_USER_NAME = BKASH_CHECKOUT_URL_USER_NAME
+app.state.config.BKASH_CHECKOUT_URL_PASSWORD = BKASH_CHECKOUT_URL_PASSWORD
+app.state.config.BKASH_CHECKOUT_URL_APP_KEY = BKASH_CHECKOUT_URL_APP_KEY
+app.state.config.BKASH_CHECKOUT_URL_APP_SECRET = BKASH_CHECKOUT_URL_APP_SECRET
 
 app.state.config.ENABLE_LDAP = ENABLE_LDAP
 app.state.config.LDAP_SERVER_LABEL = LDAP_SERVER_LABEL
@@ -1439,6 +1474,7 @@ app.include_router(groups.router, prefix="/api/v1/groups", tags=["groups"])
 app.include_router(files.router, prefix="/api/v1/files", tags=["files"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(functions.router, prefix="/api/v1/functions", tags=["functions"])
+app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(
     evaluations.router, prefix="/api/v1/evaluations", tags=["evaluations"]
 )

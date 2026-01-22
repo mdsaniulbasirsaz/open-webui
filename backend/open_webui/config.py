@@ -63,7 +63,7 @@ def run_migrations():
         migrations_path = OPEN_WEBUI_DIR / "migrations"
         alembic_cfg.set_main_option("script_location", str(migrations_path))
 
-        command.upgrade(alembic_cfg, "head")
+        command.upgrade(alembic_cfg, "heads")
     except Exception as e:
         log.exception(f"Error running migrations: {e}")
 
@@ -3919,6 +3919,94 @@ AUDIO_TTS_AZURE_SPEECH_OUTPUT_FORMAT = PersistentConfig(
     os.getenv(
         "AUDIO_TTS_AZURE_SPEECH_OUTPUT_FORMAT", "audio-24khz-160kbitrate-mono-mp3"
     ),
+)
+
+####################################
+# bKash Payment Gateway (Sandbox)
+####################################
+
+BKASH_BASE_URL = PersistentConfig(
+    "BKASH_BASE_URL",
+    "payments.bkash.base_url",
+    os.environ.get("BKASH_BASE_URL", ""),
+)
+
+BKASH_APP_KEY = PersistentConfig(
+    "BKASH_APP_KEY",
+    "payments.bkash.app_key",
+    os.environ.get("BKASH_APP_KEY", ""),
+)
+
+BKASH_APP_SECRET = PersistentConfig(
+    "BKASH_APP_SECRET",
+    "payments.bkash.app_secret",
+    os.environ.get("BKASH_APP_SECRET", ""),
+)
+
+BKASH_USERNAME = PersistentConfig(
+    "BKASH_USERNAME",
+    "payments.bkash.username",
+    os.environ.get("BKASH_USERNAME", ""),
+)
+
+BKASH_PASSWORD = PersistentConfig(
+    "BKASH_PASSWORD",
+    "payments.bkash.password",
+    os.environ.get("BKASH_PASSWORD", ""),
+)
+
+BKASH_CALLBACK_URL = PersistentConfig(
+    "BKASH_CALLBACK_URL",
+    "payments.bkash.callback_url",
+    os.environ.get("BKASH_CALLBACK_URL", ""),
+)
+
+BKASH_PAYER_REFERENCE = PersistentConfig(
+    "BKASH_PAYER_REFERENCE",
+    "payments.bkash.payer_reference",
+    os.environ.get("BKASH_PAYER_REFERENCE", ""),
+)
+
+BKASH_WEBHOOK_SECRET = PersistentConfig(
+    "BKASH_WEBHOOK_SECRET",
+    "payments.bkash.webhook_secret",
+    os.environ.get("BKASH_WEBHOOK_SECRET", ""),
+)
+
+_bkash_timeout = os.environ.get("BKASH_TIMEOUT_SECONDS", "30")
+try:
+    _bkash_timeout = int(_bkash_timeout)
+except ValueError:
+    _bkash_timeout = 30
+
+BKASH_TIMEOUT_SECONDS = PersistentConfig(
+    "BKASH_TIMEOUT_SECONDS",
+    "payments.bkash.timeout_seconds",
+    _bkash_timeout,
+)
+
+BKASH_CHECKOUT_URL_USER_NAME = PersistentConfig(
+    "BKASH_CHECKOUT_URL_USER_NAME",
+    "payments.bkash.checkout.username",
+    os.environ.get("BKASH_CHECKOUT_URL_USER_NAME", ""),
+)
+
+BKASH_CHECKOUT_URL_PASSWORD = PersistentConfig(
+    "BKASH_CHECKOUT_URL_PASSWORD",
+    "payments.bkash.checkout.password",
+    os.environ.get("BKASH_CHECKOUT_URL_PASSWORD", ""),
+)
+
+BKASH_CHECKOUT_URL_APP_KEY = PersistentConfig(
+    "BKASH_CHECKOUT_URL_APP_KEY",
+    "payments.bkash.checkout.app_key",
+    os.environ.get("BKASH_CHECKOUT_URL_APP_KEY", ""),
+)
+
+BKASH_CHECKOUT_URL_APP_SECRET = PersistentConfig(
+    "BKASH_CHECKOUT_URL_APP_SECRET",
+    "payments.bkash.checkout.app_secret",
+    os.environ.get("BKASH_CHECKOUT_URL_APP_SECRET", ""),
 )
 
 

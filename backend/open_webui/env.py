@@ -425,15 +425,15 @@ ENABLE_SIGNUP_PASSWORD_CONFIRMATION = (
 REQUIRE_EMAIL_VERIFICATION = (
     os.environ.get("REQUIRE_EMAIL_VERIFICATION", "False").lower() == "true"
 )
-EMAIL_VERIFICATION_OTP_TTL = os.environ.get("EMAIL_VERIFICATION_OTP_TTL", "15m")
-EMAIL_VERIFICATION_OTP_LENGTH = os.environ.get("EMAIL_VERIFICATION_OTP_LENGTH", "6")
+EMAIL_VERIFICATION_OTP_TTL = os.environ.get("EMAIL_VERIFICATION_OTP_TTL", "")
+EMAIL_VERIFICATION_OTP_LENGTH = os.environ.get("EMAIL_VERIFICATION_OTP_LENGTH", "")
 try:
     EMAIL_VERIFICATION_OTP_LENGTH = int(EMAIL_VERIFICATION_OTP_LENGTH)
 except ValueError:
     EMAIL_VERIFICATION_OTP_LENGTH = 6
 
 EMAIL_VERIFICATION_MAX_ATTEMPTS = os.environ.get(
-    "EMAIL_VERIFICATION_MAX_ATTEMPTS", "5"
+    "EMAIL_VERIFICATION_MAX_ATTEMPTS", ""
 )
 try:
     EMAIL_VERIFICATION_MAX_ATTEMPTS = int(EMAIL_VERIFICATION_MAX_ATTEMPTS)
@@ -441,7 +441,7 @@ except ValueError:
     EMAIL_VERIFICATION_MAX_ATTEMPTS = 5
 
 EMAIL_VERIFICATION_RESEND_COOLDOWN = os.environ.get(
-    "EMAIL_VERIFICATION_RESEND_COOLDOWN", "1m"
+    "EMAIL_VERIFICATION_RESEND_COOLDOWN", ""
 )
 ENABLE_EMAIL_VERIFICATION_LINK = (
     os.environ.get("ENABLE_EMAIL_VERIFICATION_LINK", "False").lower() == "true"
@@ -452,7 +452,7 @@ EMAIL_VERIFICATION_LINK_BASE_URL = os.environ.get(
 )
 
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
-SMTP_PORT = os.environ.get("SMTP_PORT", "587")
+SMTP_PORT = os.environ.get("SMTP_PORT", "")
 try:
     SMTP_PORT = int(SMTP_PORT)
 except ValueError:
@@ -465,6 +465,29 @@ SMTP_TLS = os.environ.get("SMTP_TLS", "true").lower() == "true"
 SMTP_SSL = os.environ.get("SMTP_SSL", "false").lower() == "true"
 
 ####################################
+# bKash Payment Gateway (Sandbox)
+####################################
+
+BKASH_BASE_URL = os.environ.get("BKASH_BASE_URL", "")
+BKASH_APP_KEY = os.environ.get("BKASH_APP_KEY", "")
+BKASH_APP_SECRET = os.environ.get("BKASH_APP_SECRET", "")
+BKASH_USERNAME = os.environ.get("BKASH_USERNAME", "")
+BKASH_PASSWORD = os.environ.get("BKASH_PASSWORD", "")
+BKASH_CALLBACK_URL = os.environ.get("BKASH_CALLBACK_URL", "")
+BKASH_PAYER_REFERENCE = os.environ.get("BKASH_PAYER_REFERENCE", "")
+BKASH_WEBHOOK_SECRET = os.environ.get("BKASH_WEBHOOK_SECRET", "")
+BKASH_TIMEOUT_SECONDS = os.environ.get("BKASH_TIMEOUT_SECONDS", "")
+try:
+    BKASH_TIMEOUT_SECONDS = int(BKASH_TIMEOUT_SECONDS)
+except ValueError:
+    BKASH_TIMEOUT_SECONDS = 30
+
+BKASH_CHECKOUT_URL_USER_NAME = os.environ.get("BKASH_CHECKOUT_URL_USER_NAME", "")
+BKASH_CHECKOUT_URL_PASSWORD = os.environ.get("BKASH_CHECKOUT_URL_PASSWORD", "")
+BKASH_CHECKOUT_URL_APP_KEY = os.environ.get("BKASH_CHECKOUT_URL_APP_KEY", "")
+BKASH_CHECKOUT_URL_APP_SECRET = os.environ.get("BKASH_CHECKOUT_URL_APP_SECRET", "")
+
+####################################
 # Admin Account Runtime Creation
 ####################################
 
@@ -472,7 +495,7 @@ SMTP_SSL = os.environ.get("SMTP_SSL", "false").lower() == "true"
 # Useful for headless/automated deployments
 WEBUI_ADMIN_EMAIL = os.environ.get("WEBUI_ADMIN_EMAIL", "")
 WEBUI_ADMIN_PASSWORD = os.environ.get("WEBUI_ADMIN_PASSWORD", "")
-WEBUI_ADMIN_NAME = os.environ.get("WEBUI_ADMIN_NAME", "Admin")
+WEBUI_ADMIN_NAME = os.environ.get("WEBUI_ADMIN_NAME", "")
 
 WEBUI_AUTH_TRUSTED_EMAIL_HEADER = os.environ.get(
     "WEBUI_AUTH_TRUSTED_EMAIL_HEADER", None
@@ -484,7 +507,7 @@ WEBUI_AUTH_TRUSTED_GROUPS_HEADER = os.environ.get(
 
 
 ENABLE_PASSWORD_VALIDATION = (
-    os.environ.get("ENABLE_PASSWORD_VALIDATION", "False").lower() == "true"
+    os.environ.get("ENABLE_PASSWORD_VALIDATION", "True").lower() == "true"
 )
 PASSWORD_VALIDATION_REGEX_PATTERN = os.environ.get(
     "PASSWORD_VALIDATION_REGEX_PATTERN",
@@ -517,7 +540,7 @@ WEBUI_AUTH_SIGNOUT_REDIRECT_URL = os.environ.get(
 WEBUI_SECRET_KEY = os.environ.get(
     "WEBUI_SECRET_KEY",
     os.environ.get(
-        "WEBUI_JWT_SECRET_KEY", "t0p-s3cr3t"
+        "WEBUI_JWT_SECRET_KEY", ""
     ),  # DEPRECATED: remove at next major version
 )
 

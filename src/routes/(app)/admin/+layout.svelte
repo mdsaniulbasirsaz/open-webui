@@ -88,6 +88,13 @@
 						>
 
 						<a
+							class="min-w-fit p-1.5 {$page.url.pathname.includes('/admin/payments')
+								? ''
+								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
+							href="/admin/payments">{$i18n.t('Payments')}</a
+						>
+
+						<a
 							class="min-w-fit p-1.5 {$page.url.pathname.includes('/admin/settings')
 								? ''
 								: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
