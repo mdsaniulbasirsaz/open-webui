@@ -11,166 +11,93 @@
 	const i18n = getContext('i18n');
 
 	let ollamaVersion = '';
-
 	let updateAvailable = null;
-	let version = {
-		current: '',
-		latest: ''
-	};
+	let version = { current: '', latest: '' };
 
 	const checkForVersionUpdates = async () => {
 		updateAvailable = null;
-		version = await getVersionUpdates(localStorage.token).catch((error) => {
-			return {
-				current: WEBUI_VERSION,
-				latest: WEBUI_VERSION
-			};
-		});
-
-		console.log(version);
-
+		version = await getVersionUpdates(localStorage.token).catch(() => ({
+			current: WEBUI_VERSION,
+			latest: WEBUI_VERSION
+		}));
 		updateAvailable = compareVersion(version.latest, version.current);
-		console.log(updateAvailable);
 	};
 
 	onMount(async () => {
-		ollamaVersion = await getOllamaVersion(localStorage.token).catch((error) => {
-			return '';
-		});
-
-		if ($config?.features?.enable_version_update_check) {
-			checkForVersionUpdates();
-		}
+		ollamaVersion = await getOllamaVersion(localStorage.token).catch(() => '');
+		if ($config?.features?.enable_version_update_check) checkForVersionUpdates();
 	});
 </script>
 
-<div id="tab-about" class="flex flex-col h-full justify-between space-y-3 text-sm mb-6">
-	<div class=" space-y-3 overflow-y-scroll max-h-[28rem] md:max-h-full">
+<div class="flex flex-col h-full p-6 space-y-6 bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-auto">
+	<!-- Header -->
+	<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
 		<div>
-			<div class=" mb-2.5 text-sm font-medium flex space-x-2 items-center">
-				<div>
-					{$WEBUI_NAME}
-					{$i18n.t('Version')}
-				</div>
-			</div>
-			<div class="flex w-full justify-between items-center">
-				<div class="flex flex-col text-xs text-gray-700 dark:text-gray-200">
-					<div class="flex gap-1">
-						<Tooltip content={WEBUI_BUILD_HASH}>
-							v{WEBUI_VERSION}
-						</Tooltip>
-
-						{#if $config?.features?.enable_version_update_check}
-							<a
-								href="https://github.com/open-webui/open-webui/releases/tag/v{version.latest}"
-								target="_blank"
-							>
-								{updateAvailable === null
-									? $i18n.t('Checking for updates...')
-									: updateAvailable
-										? `(v${version.latest} ${$i18n.t('available!')})`
-										: $i18n.t('(latest)')}
-							</a>
-						{/if}
-					</div>
-
-					<button
-						class=" underline flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-500"
-						on:click={() => {
-							showChangelog.set(true);
-						}}
-					>
-						<div>{$i18n.t("See what's new")}</div>
-					</button>
-				</div>
-
-				{#if $config?.features?.enable_version_update_check}
-					<button
-						class=" text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-850 dark:hover:bg-gray-800 transition rounded-lg font-medium"
-						on:click={() => {
-							checkForVersionUpdates();
-						}}
-					>
-						{$i18n.t('Check for updates')}
-					</button>
-				{/if}
-			</div>
+			<h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">Synapse</h1>
+			<p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{$i18n.t('About Synapse')}</p>
 		</div>
 
-		{#if ollamaVersion}
-			<hr class=" border-gray-100/30 dark:border-gray-850/30" />
+		<div class="flex flex-col md:flex-row items-start md:items-center gap-2">
+			<span class="text-xs text-gray-600 dark:text-gray-400">
+				<Tooltip content={WEBUI_BUILD_HASH}>
+					v{WEBUI_VERSION}
+				</Tooltip>
+			</span>
 
-			<div>
-				<div class=" mb-2.5 text-sm font-medium">{$i18n.t('Ollama Version')}</div>
-				<div class="flex w-full">
-					<div class="flex-1 text-xs text-gray-700 dark:text-gray-200">
-						{ollamaVersion ?? 'N/A'}
-					</div>
-				</div>
-			</div>
-		{/if}
-
-		<hr class=" border-gray-100/30 dark:border-gray-850/30" />
-
-		{#if $config?.license_metadata}
-			<div class="mb-2 text-xs">
-				{#if !$WEBUI_NAME.includes('Open WebUI')}
-					<span class=" text-gray-500 dark:text-gray-300 font-medium">{$WEBUI_NAME}</span> -
-				{/if}
-
-				<span class=" capitalize">{$config?.license_metadata?.type}</span> license purchased by
-				<span class=" capitalize">{$config?.license_metadata?.organization_name}</span>
-			</div>
-		{:else}
-			<div class="flex space-x-1">
-				<a href="https://discord.gg/5rJgQTnV4s" target="_blank">
-					<img
-						alt="Discord"
-						src="https://img.shields.io/badge/Discord-Open_WebUI-blue?logo=discord&logoColor=white"
-					/>
-				</a>
-
-				<a href="https://twitter.com/OpenWebUI" target="_blank">
-					<img
-						alt="X (formerly Twitter) Follow"
-						src="https://img.shields.io/twitter/follow/OpenWebUI"
-					/>
-				</a>
-
-				<a href="https://github.com/open-webui/open-webui" target="_blank">
-					<img
-						alt="Github Repo"
-						src="https://img.shields.io/github/stars/open-webui/open-webui?style=social&label=Star us on Github"
-					/>
-				</a>
-			</div>
-		{/if}
-
-		<div class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-			Emoji graphics provided by
-			<a href="https://github.com/jdecked/twemoji" target="_blank">Twemoji</a>, licensed under
-			<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank">CC-BY 4.0</a>.
-		</div>
-
-		<div>
-			<pre
-				class="text-xs text-gray-400 dark:text-gray-500">Copyright (c) {new Date().getFullYear()} <a
-					href="https://openwebui.com"
-					target="_blank"
-					class="underline">Open WebUI Inc.</a
-				> <a href="https://github.com/open-webui/open-webui/blob/main/LICENSE" target="_blank"
-					>All rights reserved.</a
+			{#if $config?.features?.enable_version_update_check}
+				<a
+					href="#"
+					class="text-xs font-medium text-blue-600 hover:underline pointer-events-none"
 				>
-</pre>
-		</div>
+					{updateAvailable === null
+						? $i18n.t('Checking updates...')
+						: updateAvailable
+							? `(v${version.latest} ${$i18n.t('available!')})`
+							: $i18n.t('(latest)')}
+				</a>
 
-		<div class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-			{$i18n.t('Created by')}
-			<a
-				class=" text-gray-500 dark:text-gray-300 font-medium"
-				href="https://github.com/tjbck"
-				target="_blank">Timothy J. Baek</a
-			>
+				<button
+					class="text-xs px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-blue-800 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-200 transition"
+					on:click={checkForVersionUpdates}
+				>
+					{$i18n.t('Check Updates')}
+				</button>
+			{/if}
 		</div>
+	</div>
+
+	<!-- Changelog Button -->
+	<button
+		class="text-xs underline text-gray-500 dark:text-gray-400 self-start"
+		on:click={() => showChangelog.set(true)}
+	>
+		{$i18n.t("See what's new")}
+	</button>
+
+	<!-- Divider -->
+	<hr class="border-gray-200 dark:border-gray-700" />
+
+	<!-- Ollama Version -->
+	{#if ollamaVersion}
+		<div class="flex flex-col space-y-1">
+			<h2 class="text-sm font-medium text-gray-800 dark:text-gray-200">{$i18n.t('Ollama Version')}</h2>
+			<p class="text-xs text-gray-600 dark:text-gray-400">{ollamaVersion ?? 'N/A'}</p>
+		</div>
+		<hr class="border-gray-200 dark:border-gray-700" />
+	{/if}
+
+	<!-- License -->
+	{#if $config?.license_metadata}
+		<p class="text-xs text-gray-600 dark:text-gray-400">
+			<span class="font-medium">{$config?.license_metadata?.organization_name}</span> - 
+			<span class="capitalize">{$config?.license_metadata?.type}</span> license
+		</p>
+	{/if}
+
+	<!-- Custom Footer -->
+	<div class="mt-4 text-xs text-gray-700 dark:text-gray-300">
+		<p>
+			&copy; 2026 <span class="font-medium text-blue-600 dark:text-blue-400">bdrenai@services.bdren.net.bd</span>
+		</p>
 	</div>
 </div>

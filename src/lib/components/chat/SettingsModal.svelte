@@ -8,6 +8,7 @@
 
 	import Modal from '../common/Modal.svelte';
 	import Account from './Settings/Account.svelte';
+	import PaymentDetails from './Settings/PaymentDetails.svelte';
 	import About from './Settings/About.svelte';
 	import General from './Settings/General.svelte';
 	import Interface from './Settings/Interface.svelte';
@@ -22,6 +23,7 @@
 	import SettingsAlt from '../icons/SettingsAlt.svelte';
 	import Link from '../icons/Link.svelte';
 	import UserCircle from '../icons/UserCircle.svelte';
+	import DocumentCheck from '../icons/DocumentCheck.svelte';
 	import SoundHigh from '../icons/SoundHigh.svelte';
 	import InfoCircle from '../icons/InfoCircle.svelte';
 	import WrenchAlt from '../icons/WrenchAlt.svelte';
@@ -416,6 +418,22 @@
 				'userprofile',
 				'webhook url',
 				'webhookurl'
+			]
+		},
+		{
+			id: 'payment_details',
+			title: 'Payment Details',
+			keywords: [
+				'billing',
+				'billing history',
+				'download voucher',
+				'invoice',
+				'payment',
+				'payment details',
+				'payment history',
+				'plan',
+				'subscription',
+				'voucher'
 			]
 		},
 		{
@@ -819,6 +837,32 @@
 								</div>
 								<div class=" self-center">{$i18n.t('Account')}</div>
 							</button>
+						{:else if tabId === 'payment_details'}
+							{#if $user?.role === 'user'}
+								<button
+									role="tab"
+									aria-controls="tab-payment-details"
+									aria-selected={selectedTab === 'payment_details'}
+									class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
+									${
+										selectedTab === 'payment_details'
+											? ($settings?.highContrastMode ?? false)
+												? 'dark:bg-gray-800 bg-gray-200'
+												: ''
+											: ($settings?.highContrastMode ?? false)
+												? 'hover:bg-gray-200 dark:hover:bg-gray-800'
+												: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
+									}`}
+									on:click={() => {
+										selectedTab = 'payment_details';
+									}}
+								>
+									<div class="self-center mr-2">
+										<DocumentCheck strokeWidth="2" />
+									</div>
+									<div class="self-center">{$i18n.t('Payment Details')}</div>
+								</button>
+							{/if}
 						{:else if tabId === 'about'}
 							<button
 								role="tab"
@@ -922,6 +966,15 @@
 							toast.success($i18n.t('Settings saved successfully!'));
 						}}
 					/>
+				{:else if selectedTab === 'payment_details'}
+					{#if $user?.role === 'user'}
+						<PaymentDetails />
+					{:else}
+						<div class="p-4 text-sm text-red-500">
+							{$i18n.t('You are not authorized to view this section')}
+						</div>
+					{/if}
+
 				{:else if selectedTab === 'about'}
 					<About />
 				{/if}
