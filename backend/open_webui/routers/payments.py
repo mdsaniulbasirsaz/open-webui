@@ -10,6 +10,14 @@ from requests import HTTPError, RequestException
 from requests.exceptions import ConnectionError, Timeout
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
+from sqlalchemy import func, or_
+
+from fastapi import Query, Depends
+from typing import List, Optional
+from datetime import datetime
+from open_webui.models.payments import PaymentTransaction, PaymentTransactionModel
+from open_webui.models.payments import PaymentTransactionsResponse
+
 
 from open_webui.internal.db import get_session
 from open_webui.models.payments import (
@@ -17,6 +25,7 @@ from open_webui.models.payments import (
     PaymentTransactions,
     PaymentTransactionModel,
 )
+from open_webui.models.users import User
 from open_webui.utils.auth import get_current_user
 from open_webui.utils.bkash_client import BkashClient
 
@@ -740,3 +749,614 @@ async def bkash_callback_post(
     db: Session = Depends(get_session),
 ):
     return await _handle_bkash_callback(request, response, db)
+
+
+# Payment Transactions Response
+class PaymentTransactionsResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    data: List[PaymentTransactionModel]
+
+class AdminPaymentTransactionModel(PaymentTransactionModel):
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
+    username: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminPaymentTransactionsResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    data: List[AdminPaymentTransactionModel]
+
+class PaymentStatusCount(BaseModel):
+    status: str
+    count: int
+
+
+class PaymentRevenuePoint(BaseModel):
+    date: str
+    amount: float
+    count: int
+
+
+class PaymentMetricsResponse(BaseModel):
+    total_amount: float
+    total_transactions: int
+    avg_amount: float
+    currency: Optional[str] = None
+    status_breakdown: List[PaymentStatusCount]
+    revenue_trend: List[PaymentRevenuePoint]
+
+
+class PaymentKpisResponse(BaseModel):
+    mrr: float
+    arr: float
+    active_subscriptions: int
+    arpu: float
+    churn: Optional[float] = None
+    currency: Optional[str] = None
+
+
+class PaymentUserSummary(BaseModel):
+    user_id: str
+    total_amount: float
+    currency: Optional[str] = None
+
+
+class PaymentUsersSummaryResponse(BaseModel):
+    data: List[PaymentUserSummary]
+
+
+class PaymentPlanSummary(BaseModel):
+    plan_id: str
+    total_amount: float
+    total_transactions: int
+    currency: Optional[str] = None
+
+
+class PaymentPlansSummaryResponse(BaseModel):
+    data: List[PaymentPlanSummary]
+
+
+class PaymentPlanTotalResponse(BaseModel):
+    plan_id: str
+    total_amount: float
+    total_transactions: int
+    currency: Optional[str] = None
+
+
+def _apply_transaction_filters(
+    query,
+    user_id: Optional[str],
+    status: Optional[str],
+    payment_id: Optional[str],
+    trx_id: Optional[str],
+    merchant_invoice_number: Optional[str],
+    user_query: Optional[str],
+    start_date: Optional[int],
+    end_date: Optional[int],
+    join_user: bool = False,
+):
+    if user_id:
+        query = query.filter(PaymentTransaction.user_id.ilike(f"%{user_id}%"))
+    if status:
+        query = query.filter(PaymentTransaction.status == status)
+    if payment_id:
+        query = query.filter(PaymentTransaction.payment_id.ilike(f"%{payment_id}%"))
+    if trx_id:
+        query = query.filter(PaymentTransaction.trx_id.ilike(f"%{trx_id}%"))
+    if merchant_invoice_number:
+        query = query.filter(
+            PaymentTransaction.merchant_invoice_number.ilike(f"%{merchant_invoice_number}%")
+        )
+    if user_query:
+        if not join_user:
+            query = query.join(User, PaymentTransaction.user_id == User.id)
+        query = query.filter(
+            or_(
+                User.email.ilike(f"%{user_query}%"),
+                User.name.ilike(f"%{user_query}%"),
+                User.username.ilike(f"%{user_query}%"),
+            )
+        )
+    if start_date:
+        query = query.filter(PaymentTransaction.created_at >= start_date)
+    if end_date:
+        query = query.filter(PaymentTransaction.created_at <= end_date)
+    return query
+
+
+@router.get("/transactions", response_model=PaymentTransactionsResponse)
+async def list_payment_transactions(
+    status: Optional[str] = Query(None, description="Filter by payment status"),
+    payment_id: Optional[str] = Query(None, description="Filter by Payment ID"),
+    trx_id: Optional[str] = Query(None, description="Filter by transaction ID"),
+    merchant_invoice_number: Optional[str] = Query(
+        None, description="Filter by merchant invoice number"
+    ),
+    start_date: Optional[int] = Query(None, description="Filter by start date"),
+    end_date: Optional[int] = Query(None, description="Filter by end date"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(8, ge=1, le=100),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    """
+    User API to fetch their payment transactions with filters and pagination.
+    """
+    query = db.query(PaymentTransaction).filter(PaymentTransaction.user_id == user.id)
+    query = _apply_transaction_filters(
+        query,
+        user_id=None,
+        status=status,
+        payment_id=payment_id,
+        trx_id=trx_id,
+        merchant_invoice_number=merchant_invoice_number,
+        user_query=None,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    records = (
+        query.order_by(PaymentTransaction.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    data = [PaymentTransactionModel.model_validate(record) for record in records]
+
+    return PaymentTransactionsResponse(
+        total=total,
+        page=page,
+        page_size=page_size,
+        data=data,
+    )
+
+
+
+
+
+@router.get("/admin/payments/transactions", response_model=AdminPaymentTransactionsResponse)
+async def admin_list_payment_transactions(
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    status: Optional[str] = Query(None, description="Filter by payment status"),
+    payment_id: Optional[str] = Query(None, description="Filter by Payment ID"),
+    trx_id: Optional[str] = Query(None, description="Filter by transaction ID"),
+    merchant_invoice_number: Optional[str] = Query(
+        None, description="Filter by merchant invoice number"
+    ),
+    user_query: Optional[str] = Query(
+        None, description="Filter by user email, name, or username"
+    ),
+    start_date: Optional[int] = Query(None, description="Filter by start date"),
+    end_date: Optional[int] = Query(None, description="Filter by end date"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(8, ge=1, le=100),
+    db: Session = Depends(get_session),
+):
+    """
+    Admin dashboard API to fetch payment transactions with filters, pagination, and sorting.
+    """
+    query = db.query(PaymentTransaction, User).outerjoin(
+        User, PaymentTransaction.user_id == User.id
+    )
+    query = _apply_transaction_filters(
+        query,
+        user_id=user_id,
+        status=status,
+        payment_id=payment_id,
+        trx_id=trx_id,
+        merchant_invoice_number=merchant_invoice_number,
+        user_query=user_query,
+        start_date=start_date,
+        end_date=end_date,
+        join_user=True,
+    )
+
+    total = query.count()
+    offset = (page - 1) * page_size
+    records = (
+        query.order_by(PaymentTransaction.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
+
+    data: List[AdminPaymentTransactionModel] = []
+    for record, user in records:
+        payload = PaymentTransactionModel.model_validate(record).model_dump()
+        payload.update(
+            {
+                "user_email": getattr(user, "email", None) if user else None,
+                "user_name": getattr(user, "name", None) if user else None,
+                "username": getattr(user, "username", None) if user else None,
+            }
+        )
+        data.append(AdminPaymentTransactionModel(**payload))
+
+    return AdminPaymentTransactionsResponse(
+        total=total,
+        page=page,
+        page_size=page_size,
+        data=data,
+    )
+
+
+@router.get("/admin/payments/metrics", response_model=PaymentMetricsResponse)
+async def admin_payment_metrics(
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    status: Optional[str] = Query(None, description="Filter by payment status"),
+    payment_id: Optional[str] = Query(None, description="Filter by Payment ID"),
+    trx_id: Optional[str] = Query(None, description="Filter by transaction ID"),
+    merchant_invoice_number: Optional[str] = Query(
+        None, description="Filter by merchant invoice number"
+    ),
+    user_query: Optional[str] = Query(
+        None, description="Filter by user email, name, or username"
+    ),
+    start_date: Optional[int] = Query(None, description="Filter by start date"),
+    end_date: Optional[int] = Query(None, description="Filter by end date"),
+    db: Session = Depends(get_session),
+):
+    """
+    Admin dashboard API to fetch payment metrics, status breakdown, and revenue trend.
+    """
+    base_query = db.query(PaymentTransaction)
+    base_query = _apply_transaction_filters(
+        base_query,
+        user_id=user_id,
+        status=status,
+        payment_id=payment_id,
+        trx_id=trx_id,
+        merchant_invoice_number=merchant_invoice_number,
+        user_query=user_query,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    total_transactions = base_query.count()
+    total_amount = base_query.with_entities(
+        func.coalesce(func.sum(PaymentTransaction.amount), 0)
+    ).scalar()
+    total_amount_value = float(total_amount or 0)
+    avg_amount = total_amount_value / total_transactions if total_transactions else 0.0
+
+    currency_row = (
+        base_query.with_entities(PaymentTransaction.currency)
+        .filter(PaymentTransaction.currency.isnot(None))
+        .first()
+    )
+    currency = currency_row[0] if currency_row else None
+
+    status_rows = (
+        base_query.with_entities(PaymentTransaction.status, func.count(PaymentTransaction.id))
+        .group_by(PaymentTransaction.status)
+        .all()
+    )
+    status_breakdown = [
+        PaymentStatusCount(status=(row[0] or "unknown"), count=row[1]) for row in status_rows
+    ]
+
+    trend_rows = base_query.with_entities(
+        PaymentTransaction.created_at, PaymentTransaction.amount
+    ).all()
+    trend_map: dict[str, dict[str, float]] = {}
+    for created_at, amount in trend_rows:
+        if not created_at:
+            continue
+        date_key = datetime.utcfromtimestamp(created_at).strftime("%Y-%m-%d")
+        bucket = trend_map.setdefault(date_key, {"amount": 0.0, "count": 0})
+        amount_value = float(amount or 0)
+        bucket["amount"] += amount_value
+        bucket["count"] += 1
+
+    revenue_trend = [
+        PaymentRevenuePoint(date=key, amount=value["amount"], count=int(value["count"]))
+        for key, value in sorted(trend_map.items())
+    ]
+
+    return PaymentMetricsResponse(
+        total_amount=total_amount_value,
+        total_transactions=total_transactions,
+        avg_amount=avg_amount,
+        currency=currency,
+        status_breakdown=status_breakdown,
+        revenue_trend=revenue_trend,
+    )
+
+
+@router.get("/admin/payments/kpis", response_model=PaymentKpisResponse)
+async def admin_payment_kpis(
+    start_date: Optional[int] = Query(None, description="Filter by start date"),
+    end_date: Optional[int] = Query(None, description="Filter by end date"),
+    db: Session = Depends(get_session),
+):
+    """
+    Admin dashboard API to fetch KPI metrics (MRR, ARR, ARPU) for completed payments.
+    """
+    base_query = db.query(PaymentTransaction)
+    base_query = _apply_transaction_filters(
+        base_query,
+        user_id=None,
+        status=None,
+        payment_id=None,
+        trx_id=None,
+        merchant_invoice_number=None,
+        user_query=None,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    status_value = func.trim(func.lower(PaymentTransaction.status))
+    base_query = base_query.filter(status_value == "completed")
+
+    total_transactions = base_query.with_entities(func.count(PaymentTransaction.id)).scalar()
+    total_amount = base_query.with_entities(
+        func.coalesce(func.sum(PaymentTransaction.amount), 0)
+    ).scalar()
+    total_amount_value = float(total_amount or 0)
+    total_transactions_value = int(total_transactions or 0)
+    arpu = (
+        total_amount_value / total_transactions_value
+        if total_transactions_value
+        else 0.0
+    )
+
+    currency_row = (
+        base_query.with_entities(PaymentTransaction.currency)
+        .filter(PaymentTransaction.currency.isnot(None))
+        .first()
+    )
+    currency = currency_row[0] if currency_row else None
+
+    return PaymentKpisResponse(
+        mrr=total_amount_value,
+        arr=total_amount_value * 12,
+        active_subscriptions=total_transactions_value,
+        arpu=arpu,
+        churn=None,
+        currency=currency,
+    )
+
+
+@router.get("/admin/payments/users/summary", response_model=PaymentUsersSummaryResponse)
+async def admin_payment_users_summary(
+    user_ids: Optional[str] = Query(
+        None, description="Comma-separated list of user IDs to include"
+    ),
+    status: Optional[str] = Query(None, description="Filter by payment status"),
+    user_query: Optional[str] = Query(
+        None, description="Filter by user email, name, or username"
+    ),
+    start_date: Optional[int] = Query(None, description="Filter by start date"),
+    end_date: Optional[int] = Query(None, description="Filter by end date"),
+    db: Session = Depends(get_session),
+):
+    """
+    Admin dashboard API to fetch per-user payment totals.
+    """
+    query = db.query(PaymentTransaction)
+    query = _apply_transaction_filters(
+        query,
+        user_id=None,
+        status=status,
+        payment_id=None,
+        trx_id=None,
+        merchant_invoice_number=None,
+        user_query=user_query,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if user_ids:
+        ids = [item.strip() for item in user_ids.split(",") if item.strip()]
+        if ids:
+            query = query.filter(PaymentTransaction.user_id.in_(ids))
+
+    rows = (
+        query.with_entities(
+            PaymentTransaction.user_id,
+            func.coalesce(func.sum(PaymentTransaction.amount), 0),
+            PaymentTransaction.currency,
+        )
+        .group_by(PaymentTransaction.user_id, PaymentTransaction.currency)
+        .all()
+    )
+
+    data = [
+        PaymentUserSummary(
+            user_id=row[0],
+            total_amount=float(row[1] or 0),
+            currency=row[2],
+        )
+        for row in rows
+        if row[0]
+    ]
+
+    return PaymentUsersSummaryResponse(data=data)
+
+
+@router.get("/admin/payments/plans/summary", response_model=PaymentPlansSummaryResponse)
+async def admin_payment_plans_summary(
+    start_date: Optional[int] = Query(None, description="Filter by start date"),
+    end_date: Optional[int] = Query(None, description="Filter by end date"),
+    db: Session = Depends(get_session),
+):
+    """
+    Admin dashboard API to fetch per-plan payment totals for completed payments only.
+    """
+    completed_statuses = {"completed", "executed", "confirmed", "success"}
+    status_value = func.trim(func.lower(PaymentTransaction.status))
+    plan_value = func.trim(func.lower(PaymentTransaction.plan_id))
+    query = db.query(PaymentTransaction).filter(status_value.in_(completed_statuses))
+    query = _apply_transaction_filters(
+        query,
+        user_id=None,
+        status=None,
+        payment_id=None,
+        trx_id=None,
+        merchant_invoice_number=None,
+        user_query=None,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    rows = (
+        query.with_entities(
+            plan_value,
+            func.coalesce(func.sum(PaymentTransaction.amount), 0),
+            func.count(PaymentTransaction.id),
+            PaymentTransaction.currency,
+        )
+        .group_by(plan_value, PaymentTransaction.currency)
+        .all()
+    )
+
+    data = [
+        PaymentPlanSummary(
+            plan_id=row[0],
+            total_amount=float(row[1] or 0),
+            total_transactions=int(row[2] or 0),
+            currency=row[3],
+        )
+        for row in rows
+        if row[0]
+    ]
+
+    return PaymentPlansSummaryResponse(data=data)
+
+
+@router.get("/admin/transactions/plans", response_model=PaymentPlanTotalResponse)
+async def admin_plan_total_amount(
+    plan_id: str = Query(..., description="Plan ID to summarize"),
+    db: Session = Depends(get_session),
+):
+    """
+    Admin API to fetch total amount for completed transactions of a plan.
+    """
+    normalized_plan_id = plan_id.strip().lower()
+    status_value = func.trim(func.lower(PaymentTransaction.status))
+    plan_value = func.trim(func.lower(PaymentTransaction.plan_id))
+
+    query = db.query(PaymentTransaction).filter(
+        status_value == "completed",
+        plan_value == normalized_plan_id,
+    )
+
+    total_amount = query.with_entities(
+        func.coalesce(func.sum(PaymentTransaction.amount), 0)
+    ).scalar()
+    total_transactions = query.with_entities(func.count(PaymentTransaction.id)).scalar()
+    currency_row = (
+        query.with_entities(PaymentTransaction.currency)
+        .filter(PaymentTransaction.currency.isnot(None))
+        .first()
+    )
+    currency = currency_row[0] if currency_row else None
+
+    return PaymentPlanTotalResponse(
+        plan_id=normalized_plan_id,
+        total_amount=float(total_amount or 0),
+        total_transactions=int(total_transactions or 0),
+        currency=currency,
+    )
+
+
+@router.get("/admin/payments/transactions/export")
+async def admin_export_payment_transactions(
+    user_id: Optional[str] = Query(None, description="Filter by user ID"),
+    status: Optional[str] = Query(None, description="Filter by payment status"),
+    payment_id: Optional[str] = Query(None, description="Filter by Payment ID"),
+    trx_id: Optional[str] = Query(None, description="Filter by transaction ID"),
+    merchant_invoice_number: Optional[str] = Query(
+        None, description="Filter by merchant invoice number"
+    ),
+    user_query: Optional[str] = Query(
+        None, description="Filter by user email, name, or username"
+    ),
+    start_date: Optional[int] = Query(None, description="Filter by start date"),
+    end_date: Optional[int] = Query(None, description="Filter by end date"),
+    db: Session = Depends(get_session),
+):
+    """
+    Export payment transactions as CSV using the same filters as the admin list.
+    """
+    import csv
+    import io
+
+    query = db.query(PaymentTransaction, User).outerjoin(
+        User, PaymentTransaction.user_id == User.id
+    )
+    query = _apply_transaction_filters(
+        query,
+        user_id=user_id,
+        status=status,
+        payment_id=payment_id,
+        trx_id=trx_id,
+        merchant_invoice_number=merchant_invoice_number,
+        user_query=user_query,
+        start_date=start_date,
+        end_date=end_date,
+        join_user=True,
+    )
+
+    records = (
+        query.order_by(PaymentTransaction.created_at.desc())
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "id",
+            "user_id",
+            "user_email",
+            "user_name",
+            "username",
+            "plan_id",
+            "amount",
+            "currency",
+            "status",
+            "payment_id",
+            "trx_id",
+            "merchant_invoice_number",
+            "created_at",
+            "updated_at",
+        ]
+    )
+
+    for transaction, user in records:
+        writer.writerow(
+            [
+                transaction.id,
+                transaction.user_id,
+                getattr(user, "email", "") if user else "",
+                getattr(user, "name", "") if user else "",
+                getattr(user, "username", "") if user else "",
+                transaction.plan_id or "",
+                transaction.amount or "",
+                transaction.currency or "",
+                transaction.status or "",
+                transaction.payment_id or "",
+                transaction.trx_id or "",
+                transaction.merchant_invoice_number or "",
+                transaction.created_at,
+                transaction.updated_at,
+            ]
+        )
+
+    csv_value = output.getvalue()
+    output.close()
+    filename = f"payment-transactions-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
+    return Response(
+        content=csv_value,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

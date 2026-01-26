@@ -53,6 +53,16 @@ class PaymentTransactionModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+from typing import List
+class PaymentTransactionsResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    data: List[PaymentTransactionModel]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PaymentEventModel(BaseModel):
     id: str
     payment_id: Optional[str] = None
@@ -61,7 +71,6 @@ class PaymentEventModel(BaseModel):
     created_at: int
 
     model_config = ConfigDict(from_attributes=True)
-
 
 class PaymentTransactionTable:
     def create_transaction(
