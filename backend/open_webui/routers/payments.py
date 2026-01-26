@@ -1,8 +1,10 @@
 import os
 import logging
 import uuid
+import io
 from typing import Optional
 from urllib.parse import urlencode
+
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -32,6 +34,20 @@ from open_webui.utils.bkash_client import BkashClient
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+
+class UserSubscriptionDetails(BaseModel):
+    has_subscription: bool
+    plan_id: Optional[str] = None
+    status: Optional[str] = None
+    start_date: Optional[int] = None
+    renewal_date: Optional[int] = None
+    expiry_date: Optional[int] = None
+    latest_transaction_id: Optional[str] = None
+    merchant_invoice_number: Optional[str] = None
+    currency: Optional[str] = None
+    amount: Optional[float] = None
 
 
 class CreateBkashPaymentForm(BaseModel):
@@ -68,6 +84,19 @@ class BkashCallbackPayload(BaseModel):
     statusCode: Optional[str] = None
     statusMessage: Optional[str] = None
     model_config = ConfigDict(extra="allow")
+
+
+class PricingPlan(BaseModel):
+    plan_id: str
+    name: str
+    features: str
+    amount: float
+    currency: str = "BDT"
+    period: str = "/ month"
+
+
+class PricingPlansResponse(BaseModel):
+    data: List[PricingPlan]
 
 
 def _build_bkash_client(request: Request) -> BkashClient:
@@ -870,6 +899,82 @@ def _apply_transaction_filters(
     return query
 
 
+def _estimate_subscription_window(plan_id: Optional[str], start_ts: Optional[int]) -> tuple[Optional[int], Optional[int]]:
+    if not start_ts:
+        return None, None
+
+    normalized = (plan_id or "").strip().lower()
+    yearly_tokens = {"year", "annual", "annually", "yr", "yearly"}
+    is_yearly = any(token in normalized for token in yearly_tokens)
+
+    duration_days = 365 if is_yearly else 30
+    end_ts = start_ts + duration_days * 24 * 60 * 60
+    return end_ts, end_ts
+
+
+@router.get("/plans", response_model=PricingPlansResponse)
+async def list_pricing_plans():
+    """
+    Public API to fetch pricing plans used by the UI.
+    """
+    plans = [
+        PricingPlan(
+            plan_id="free",
+            name="Free",
+            features="Basic Features",
+            amount=0,
+            currency="BDT",
+            period="/ month",
+        ),
+        PricingPlan(
+            plan_id="pro",
+            name="Pro",
+            features="Advanced Features",
+            amount=99,
+            currency="USD",
+            period="/ month",
+        ),
+    ]
+
+    return PricingPlansResponse(data=plans)
+
+
+@router.get("/me/subscription", response_model=UserSubscriptionDetails)
+async def get_my_subscription_details(
+    user=Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    """
+    User API to fetch a derived subscription summary for the current user.
+
+    """
+    latest = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.user_id == user.id)
+        .order_by(PaymentTransaction.updated_at.desc(), PaymentTransaction.created_at.desc())
+        .first()
+    )
+
+    if not latest:
+        return UserSubscriptionDetails(has_subscription=False)
+
+    start_date = latest.created_at
+    renewal_date, expiry_date = _estimate_subscription_window(latest.plan_id, start_date)
+
+    return UserSubscriptionDetails(
+        has_subscription=True,
+        plan_id=latest.plan_id,
+        status=latest.status,
+        start_date=start_date,
+        renewal_date=renewal_date,
+        expiry_date=expiry_date,
+        latest_transaction_id=latest.id,
+        merchant_invoice_number=latest.merchant_invoice_number,
+        currency=latest.currency,
+        amount=float(latest.amount or 0),
+    )
+
+
 @router.get("/transactions", response_model=PaymentTransactionsResponse)
 async def list_payment_transactions(
     status: Optional[str] = Query(None, description="Filter by payment status"),
@@ -918,7 +1023,6 @@ async def list_payment_transactions(
         page_size=page_size,
         data=data,
     )
-
 
 
 

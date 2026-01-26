@@ -29,6 +29,28 @@ export type AdminPaymentTransactionsParams = {
 
 export type UserPaymentTransactionsParams = Omit<AdminPaymentTransactionsParams, 'user_id' | 'user_query'>;
 
+export type MySubscriptionDetails = {
+	has_subscription: boolean;
+	plan_id?: string | null;
+	status?: string | null;
+	start_date?: number | null;
+	renewal_date?: number | null;
+	expiry_date?: number | null;
+	latest_transaction_id?: string | null;
+	merchant_invoice_number?: string | null;
+	currency?: string | null;
+	amount?: number | null;
+};
+
+export type PricingPlan = {
+	plan_id: string;
+	name: string;
+	features: string;
+	amount: number;
+	currency: string;
+	period: string;
+};
+
 const assertBearerToken = (token?: string | null) => {
 	const trimmed = token?.trim();
 	if (!trimmed) {
@@ -333,3 +355,22 @@ export const listMyPaymentTransactions = async (
 		}
 	});
 };
+
+export const getMySubscriptionDetails = async (token: string) =>
+	fetchJson(`${WEBUI_API_BASE_URL}/payments/me/subscription`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${assertBearerToken(token)}`
+		}
+	});
+
+export const listPricingPlans = async (): Promise<{ data: PricingPlan[] }> =>
+	fetchJson(`${WEBUI_API_BASE_URL}/payments/plans`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json'
+		}
+	});
