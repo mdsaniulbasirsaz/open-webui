@@ -4,10 +4,12 @@ import uuid
 import io
 from typing import Optional
 from urllib.parse import urlencode
+import time
 
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from fpdf import FPDF
 from requests import HTTPError, RequestException
 from requests.exceptions import ConnectionError, Timeout
 from pydantic import BaseModel, ConfigDict
@@ -34,6 +36,162 @@ from open_webui.utils.bkash_client import BkashClient
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _safe_filename_component(value: str) -> str:
+    cleaned = "".join(ch for ch in value if ch.isalnum() or ch in ("-", "_"))
+    return cleaned or "invoice"
+
+
+def _build_invoice_pdf_bytes(
+    *,
+    merchant_name: str,
+    invoice_number: str,
+    payment_id: str,
+    plan_id: Optional[str],
+    amount: float,
+    currency: str,
+    status_value: str,
+    paid_at: Optional[int],
+    issued_at: Optional[int],
+    customer_name: str,
+    customer_email: str,
+) -> bytes:
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    logo_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "static", "logo.png")
+    )
+    if os.path.exists(logo_path):
+        try:
+            # Header logo (top center)
+            logo_w = 28
+            x = (210 - logo_w) / 2
+            pdf.image(logo_path, x=x, y=12, w=logo_w)
+            pdf.ln(22)
+        except Exception:
+            pass
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, merchant_name, ln=True)
+
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, "Invoice", ln=True)
+
+    # Invoice details table
+    details = [
+        ("Invoice number", invoice_number),
+        ("Payment ID", payment_id),
+        (
+            "Issued at (UTC)",
+            datetime.utcfromtimestamp(issued_at).strftime("%Y-%m-%d %H:%M:%S")
+            if issued_at
+            else "-",
+        ),
+        ("Customer", f"{customer_name} <{customer_email}>"),
+    ]
+
+    # For Paid at (UTC), check if status is canceled
+    paid_at_text = (
+        "Unpaid"  # If status is canceled, display "Unpaid"
+        if status_value.lower() == "canceled"
+        else (
+            datetime.utcfromtimestamp(paid_at).strftime("%Y-%m-%d %H:%M:%S")
+            if paid_at
+            else "-"
+        )
+    )
+
+    # Add the Paid at (UTC) row dynamically based on status
+    details.append(("Paid at (UTC)", paid_at_text))
+
+    pdf.ln(2)
+    pdf.set_fill_color(22, 163, 74)  # green
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, "Invoice details", border=1 ,ln=True, fill=True)
+    pdf.set_text_color(0, 0, 0)
+
+    label_w = 55
+    value_w = 190 - label_w
+    pdf.set_font("Helvetica", "", 11)
+    for label, value in details:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(label_w, 7, f"{label}:", border=1)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(value_w, 7, str(value), border=1, ln=True)
+
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Items", ln=True)
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, f"Status: {status_value}", ln=True)
+
+    description = f"Subscription{f' ({plan_id})' if plan_id else ''}"
+    qty_w, unit_w, amt_w = 18, 32, 32
+    desc_w = 190 - (qty_w + unit_w + amt_w)
+
+    pdf.ln(2)
+    pdf.set_fill_color(22, 163, 74)  # green
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(desc_w, 7, "Description", border=1, fill=True)
+    pdf.cell(qty_w, 7, "Qty", border=1, align="R", fill=True)
+    pdf.cell(unit_w, 7, "Unit", border=1, align="R", fill=True)
+    pdf.cell(amt_w, 7, "Amount", border=1, align="R", fill=True, ln=True)
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(desc_w, 7, description, border=1)
+    pdf.cell(qty_w, 7, "1", border=1, align="R")
+    pdf.cell(unit_w, 7, f"{currency} {amount:.2f}", border=1, align="R")
+    pdf.cell(amt_w, 7, f"{currency} {amount:.2f}", border=1, align="R", ln=True)
+
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Totals", ln=True)
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, f"Subtotal: {currency} {amount:.2f}", ln=True)
+    pdf.cell(0, 6, f"Tax: {currency} 0.00", ln=True)
+    pdf.cell(0, 6, f"Discount: {currency} 0.00", ln=True)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 7, f"Total: {currency} {amount:.2f}", ln=True)
+
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(0, 5, "If you have questions about this invoice, please contact support.")
+
+    pdf.ln(2)  
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(0, 5, "Email: bdrenai@services.bdren.net.bd")
+
+
+    pdf.ln(75)
+    
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "I", 9) 
+    pdf.multi_cell(0, 5, "This is a software-generated document and does not require a signature.")
+
+    pdf.ln(2) 
+    pdf.set_font("Helvetica", "I", 9) 
+    generated_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC") 
+    pdf.multi_cell(0, 5, f"Generated on: {generated_time}")
+
+
+    output = pdf.output(dest="S")
+    if isinstance(output, str):
+        return output.encode("latin-1")
+    if isinstance(output, bytearray):
+        return bytes(output)
+    return output
+
+
+def _derive_invoice_number(transaction: PaymentTransactionModel) -> str:
+    return transaction.merchant_invoice_number or transaction.id
 
 
 
@@ -975,6 +1133,67 @@ async def get_my_subscription_details(
     )
 
 
+def _update_latest_subscription_status(
+    *,
+    db: Session,
+    user_id: str,
+    new_status: str,
+) -> UserSubscriptionDetails:
+    latest = (
+        db.query(PaymentTransaction)
+        .filter(PaymentTransaction.user_id == user_id)
+        .order_by(PaymentTransaction.updated_at.desc(), PaymentTransaction.created_at.desc())
+        .first()
+    )
+    if not latest:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No subscription found.")
+
+    latest.status = new_status
+    latest.updated_at = int(time.time())
+    db.commit()
+    db.refresh(latest)
+
+    start_date = latest.created_at
+    renewal_date, expiry_date = _estimate_subscription_window(latest.plan_id, start_date)
+
+    return UserSubscriptionDetails(
+        has_subscription=True,
+        plan_id=latest.plan_id,
+        status=latest.status,
+        start_date=start_date,
+        renewal_date=renewal_date,
+        expiry_date=expiry_date,
+        latest_transaction_id=latest.id,
+        merchant_invoice_number=latest.merchant_invoice_number,
+        currency=latest.currency,
+        amount=float(latest.amount or 0),
+    )
+
+
+@router.post("/me/subscription/pause", response_model=UserSubscriptionDetails)
+async def pause_my_subscription(
+    user=Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    """
+    Marks the latest subscription as paused.
+    Note: This is a UI-level state derived from the latest payment transaction.
+    """
+    return _update_latest_subscription_status(db=db, user_id=user.id, new_status="paused")
+
+
+@router.post("/me/subscription/cancel", response_model=UserSubscriptionDetails)
+async def cancel_my_subscription(
+    user=Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    """
+    Marks the latest subscription as canceled.
+    Note: This is a UI-level state derived from the latest payment transaction.
+    """
+    return _update_latest_subscription_status(db=db, user_id=user.id, new_status="canceled")
+
+
 @router.get("/transactions", response_model=PaymentTransactionsResponse)
 async def list_payment_transactions(
     status: Optional[str] = Query(None, description="Filter by payment status"),
@@ -1015,13 +1234,75 @@ async def list_payment_transactions(
         .all()
     )
 
-    data = [PaymentTransactionModel.model_validate(record) for record in records]
+    data: List[PaymentTransactionModel] = []
+    for record in records:
+        transaction = PaymentTransactionModel.model_validate(record)
+        data.append(
+            transaction.model_copy(
+                update={"invoice_number": _derive_invoice_number(transaction)}
+            )
+        )
 
     return PaymentTransactionsResponse(
         total=total,
         page=page,
         page_size=page_size,
         data=data,
+    )
+
+
+@router.get("/invoices/{transaction_id}.pdf")
+async def download_invoice_pdf(
+    transaction_id: str,
+    request: Request,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    record = db.query(PaymentTransaction).filter(PaymentTransaction.id == transaction_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+
+    if record.user_id != getattr(user, "id", None):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized.")
+
+    transaction = PaymentTransactionModel.model_validate(record)
+    invoice_number = _derive_invoice_number(transaction)
+    filename = f"invoice-{_safe_filename_component(invoice_number)}.pdf"
+
+    amount = float(transaction.amount or 0)
+    currency = transaction.currency or "BDT"
+    status_value = transaction.status or "unknown"
+    paid_at = transaction.updated_at or transaction.created_at
+
+    pdf_bytes = _build_invoice_pdf_bytes(
+        merchant_name=getattr(getattr(request.app.state, "config", None), "WEBUI_NAME", None)
+        or getattr(request.app.state, "WEBUI_NAME", None)
+        or "Open WebUI",
+        invoice_number=invoice_number,
+        payment_id=transaction.payment_id or transaction.trx_id or transaction.id,
+        plan_id=transaction.plan_id,
+        amount=amount,
+        currency=currency,
+        status_value=status_value,
+        paid_at=paid_at,
+        issued_at=transaction.created_at,
+        customer_name=getattr(user, "name", "") or "Customer",
+        customer_email=getattr(user, "email", "") or "-",
+    )
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate invoice PDF.",
+        )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -1075,7 +1356,9 @@ async def admin_list_payment_transactions(
 
     data: List[AdminPaymentTransactionModel] = []
     for record, user in records:
-        payload = PaymentTransactionModel.model_validate(record).model_dump()
+        transaction = PaymentTransactionModel.model_validate(record)
+        payload = transaction.model_dump()
+        payload["invoice_number"] = _derive_invoice_number(transaction)
         payload.update(
             {
                 "user_email": getattr(user, "email", None) if user else None,

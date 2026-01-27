@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import BigInteger, Column, JSON, Numeric, String, Text
@@ -53,7 +53,6 @@ class PaymentTransactionModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-from typing import List
 class PaymentTransactionsResponse(BaseModel):
     total: int
     page: int
@@ -61,6 +60,47 @@ class PaymentTransactionsResponse(BaseModel):
     data: List[PaymentTransactionModel]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InvoicePartyModel(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    user_id: Optional[str] = None
+
+
+class InvoiceLineItemModel(BaseModel):
+    description: str
+    quantity: int = 1
+    unit_price: float
+    amount: float
+    plan_id: Optional[str] = None
+
+
+class InvoiceTotalsModel(BaseModel):
+    subtotal: float
+    tax: float = 0.0
+    discount: float = 0.0
+    total: float
+    currency: str
+
+
+class InvoicePaymentModel(BaseModel):
+    status: Optional[str] = None
+    method: Optional[str] = None
+    payment_id: Optional[str] = None
+    trx_id: Optional[str] = None
+    paid_at: Optional[int] = None
+
+
+class InvoiceDocumentModel(BaseModel):
+    invoice_number: str
+    transaction_id: str
+    issued_at: int
+    customer: InvoicePartyModel
+    merchant: Optional[InvoicePartyModel] = None
+    line_items: List[InvoiceLineItemModel]
+    totals: InvoiceTotalsModel
+    payment: InvoicePaymentModel
 
 
 class PaymentEventModel(BaseModel):

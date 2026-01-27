@@ -1,5 +1,69 @@
 import { WEBUI_API_BASE_URL } from '$lib/constants';
 
+export type PaymentTransaction = {
+	id: string;
+	user_id: string;
+	plan_id?: string | null;
+	amount?: number | null;
+	currency?: string | null;
+	status?: string | null;
+	payment_id?: string | null;
+	trx_id?: string | null;
+	merchant_invoice_number?: string | null;
+	invoice_number?: string | null;
+	raw_response?: Record<string, unknown> | null;
+	created_at: number;
+	updated_at: number;
+};
+
+export type PaymentTransactionsResponse = {
+	total: number;
+	page: number;
+	page_size: number;
+	data: PaymentTransaction[];
+};
+
+export type InvoiceParty = {
+	name?: string | null;
+	email?: string | null;
+	user_id?: string | null;
+};
+
+export type InvoiceLineItem = {
+	description: string;
+	quantity: number;
+	unit_price: number;
+	amount: number;
+	plan_id?: string | null;
+};
+
+export type InvoiceTotals = {
+	subtotal: number;
+	tax: number;
+	discount: number;
+	total: number;
+	currency: string;
+};
+
+export type InvoicePayment = {
+	status?: string | null;
+	method?: string | null;
+	payment_id?: string | null;
+	trx_id?: string | null;
+	paid_at?: number | null;
+};
+
+export type InvoiceDocument = {
+	invoice_number: string;
+	transaction_id: string;
+	issued_at: number;
+	customer: InvoiceParty;
+	merchant?: InvoiceParty | null;
+	line_items: InvoiceLineItem[];
+	totals: InvoiceTotals;
+	payment: InvoicePayment;
+};
+
 type CreateBkashPaymentForm = {
 	plan_id?: string;
 	amount: number;
@@ -353,8 +417,17 @@ export const listMyPaymentTransactions = async (
 			'Content-Type': 'application/json',
 			Authorization: `Bearer ${assertBearerToken(token)}`
 		}
-	});
+	}) as Promise<PaymentTransactionsResponse>;
 };
+
+export const downloadMyInvoicePdf = async (token: string, transaction_id: string) =>
+	fetchBlob(`${WEBUI_API_BASE_URL}/payments/invoices/${transaction_id}.pdf`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/pdf',
+			Authorization: `Bearer ${assertBearerToken(token)}`
+		}
+	});
 
 export const getMySubscriptionDetails = async (token: string) =>
 	fetchJson(`${WEBUI_API_BASE_URL}/payments/me/subscription`, {
@@ -365,6 +438,26 @@ export const getMySubscriptionDetails = async (token: string) =>
 			Authorization: `Bearer ${assertBearerToken(token)}`
 		}
 	});
+
+export const pauseMySubscription = async (token: string) =>
+	fetchJson(`${WEBUI_API_BASE_URL}/payments/me/subscription/pause`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${assertBearerToken(token)}`
+		}
+	}) as Promise<MySubscriptionDetails>;
+
+export const cancelMySubscription = async (token: string) =>
+	fetchJson(`${WEBUI_API_BASE_URL}/payments/me/subscription/cancel`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${assertBearerToken(token)}`
+		}
+	}) as Promise<MySubscriptionDetails>;
 
 export const listPricingPlans = async (): Promise<{ data: PricingPlan[] }> =>
 	fetchJson(`${WEBUI_API_BASE_URL}/payments/plans`, {

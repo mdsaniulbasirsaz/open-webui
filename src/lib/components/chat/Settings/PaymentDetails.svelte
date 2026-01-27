@@ -3,10 +3,14 @@
 	import { toast } from 'svelte-sonner';
 
 	import {
+		cancelMySubscription,
+		downloadMyInvoicePdf,
 		getMySubscriptionDetails,
 		listMyPaymentTransactions,
 		listPricingPlans,
+		pauseMySubscription,
 		type MySubscriptionDetails,
+		type PaymentTransaction,
 		type PricingPlan
 	} from '$lib/apis/payments';
 	import { pricingPlans } from '$lib/data/pricing';
@@ -15,27 +19,14 @@
   const i18n = getContext('i18n');
 
   type ViewState = 'loaded' | 'loading' | 'empty';
-  type PlanStatus = 'Active' | 'Expired' | 'Cancelled';
-  type PaymentStatus = 'Paid' | 'Failed' | 'Pending';
-
-	type PaymentTransaction = {
-		id: string;
-		user_id: string;
-		plan_id?: string | null;
-		amount?: number | null;
-		currency?: string | null;
-		status?: string | null;
-		payment_id?: string | null;
-		trx_id?: string | null;
-		merchant_invoice_number?: string | null;
-		raw_response?: Record<string, unknown> | null;
-		created_at: number;
-		updated_at: number;
-	};
+  type PlanStatus = 'Active' | 'Expired' | 'Cancelled' | 'Paused';
+  type PaymentStatus = 'Paid' | 'Failed' | 'Canceled';
 
   let viewState: ViewState = 'loading';
   let isLoading = true;
   let hasSubscription = false;
+	let pauseLoading = false;
+	let cancelLoading = false;
 
 	let transactions: PaymentTransaction[] = [];
 
@@ -55,7 +46,7 @@
     discount: 0,
     total: 0,
     currency: 'BDT',
-    payment_status: 'Pending' as PaymentStatus
+    payment_status: 'Canceled' as PaymentStatus
   };
 
   let transaction = {
@@ -65,16 +56,24 @@
     paid_date: ''
   };
 
-  let downloads = {
-    voucher_url: ''
-  };
+	let downloads = {
+		voucher_url: ''
+	};
 
-	let history: { paid_date: string; amount: number; status: PaymentStatus; invoice_id: string }[] = [];
+	let history: {
+		transaction_id: string;
+		payment_id: string;
+		paid_date: string;
+		amount: number;
+		status: PaymentStatus;
+		invoice_id: string;
+	}[] = [];
 	let historyTotal = 0;
 	let historyPage = 1;
 	let historyPageSize = 5;
 	let historyLoading = false;
 	let historyLastFetchedPage = 0;
+	let invoiceDownloading: Record<string, boolean> = {};
 
 	let comparePlans: PricingPlan[] = [];
 
@@ -127,6 +126,11 @@
 		{ label: 'Expiry date', value: subscription.expiry_date, format: 'date' }
 	];
 
+	$: hasProgressDates = Boolean(subscription.start_date && subscription.expiry_date);
+	$: progressValue = hasProgressDates
+		? calculateProgress(subscription.start_date, subscription.expiry_date)
+		: 0;
+
 	let summaryCards: { label: string; value: number; format: 'currency' }[] = [];
 	$: summaryCards = [
 		{ label: 'Amount', value: paymentSummary.amount, format: 'currency' },
@@ -164,14 +168,54 @@
 		const normalized = (value ?? '').trim().toLowerCase();
 		if (normalized === 'completed' || normalized === 'success' || normalized === 'paid') return 'Paid';
 		if (normalized === 'failed') return 'Failed';
-		return 'Pending';
+		return 'Canceled';
 	};
 
 	const normalizePlanStatus = (value?: string | null): PlanStatus => {
 		const normalized = (value ?? '').trim().toLowerCase();
+		if (normalized === 'paused') return 'Paused';
 		if (normalized === 'canceled' || normalized === 'cancelled') return 'Cancelled';
 		if (normalized === 'expired') return 'Expired';
 		return 'Active';
+	};
+
+	const canPause = () => !pauseLoading && subscription.status === 'Active';
+	const canCancel = () =>
+		!cancelLoading &&
+		(subscription.status === 'Active' || subscription.status === 'Paused');
+
+	const handlePause = async () => {
+		if (!canPause()) return;
+		if (!confirm($i18n.t('Pause your subscription?'))) return;
+		pauseLoading = true;
+		try {
+			const details = await pauseMySubscription(localStorage.token);
+			if (details?.has_subscription) {
+				refreshSubscriptionFromApi(details as MySubscriptionDetails);
+			}
+			toast.success($i18n.t('Subscription paused.'));
+		} catch (err) {
+			toast.error(typeof err === 'string' ? err : 'Failed to pause subscription.');
+		} finally {
+			pauseLoading = false;
+		}
+	};
+
+	const handleCancel = async () => {
+		if (!canCancel()) return;
+		if (!confirm($i18n.t('Cancel your subscription?'))) return;
+		cancelLoading = true;
+		try {
+			const details = await cancelMySubscription(localStorage.token);
+			if (details?.has_subscription) {
+				refreshSubscriptionFromApi(details as MySubscriptionDetails);
+			}
+			toast.success($i18n.t('Subscription canceled.'));
+		} catch (err) {
+			toast.error(typeof err === 'string' ? err : 'Failed to cancel subscription.');
+		} finally {
+			cancelLoading = false;
+		}
 	};
 
 
@@ -190,7 +234,7 @@
 
 		const currency = latest.currency ?? paymentSummary.currency ?? 'BDT';
 		const amount = Number(latest.amount ?? 0);
-		const invoiceId = latest.merchant_invoice_number ?? latest.id;
+		const invoiceId = latest.invoice_number ?? latest.merchant_invoice_number ?? latest.id;
 
 		paymentSummary = {
 			amount,
@@ -213,14 +257,46 @@
         };
 
 		history = transactions.map((t) => {
-			const id = t.merchant_invoice_number ?? t.id;
+			const id = t.invoice_number ?? t.merchant_invoice_number ?? t.id;
 			return {
+				transaction_id: t.id,
+				payment_id: t.payment_id ?? t.trx_id ?? '-',
 				paid_date: safeDateIso(t.updated_at ?? t.created_at),
 				amount: Number(t.amount ?? 0),
 				status: normalizePaymentStatus(t.status),
 				invoice_id: id
 			};
 		});
+	};
+
+	const downloadInvoicePdf = async (transactionId: string, invoiceId: string) => {
+		if (!transactionId) return;
+		invoiceDownloading = { ...invoiceDownloading, [transactionId]: true };
+		try {
+			const blob = await downloadMyInvoicePdf(localStorage.token, transactionId);
+			const magic = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+			if (
+				magic.length < 4 ||
+				magic[0] !== 0x25 || // %
+				magic[1] !== 0x50 || // P
+				magic[2] !== 0x44 || // D
+				magic[3] !== 0x46 // F
+			) {
+				throw 'Server returned a non-PDF response. Please try again.';
+			}
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `invoice-${invoiceId || transactionId}.pdf`;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		} catch (err) {
+			toast.error(typeof err === 'string' ? err : 'Failed to download invoice.');
+		} finally {
+			invoiceDownloading = { ...invoiceDownloading, [transactionId]: false };
+		}
 	};
 
 	const fetchHistoryPage = async (page: number) => {
@@ -319,11 +395,12 @@
 
   const statusStyles = {
     Active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
+		Paused: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
     Expired: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200',
     Cancelled: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
     Paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
     Failed: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
-    Pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200'
+    Canceled: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200'
   };
 
   const getStatusClass = (status: string) =>
@@ -348,7 +425,7 @@
         </div>
       {/if}
 
-      <div class="space-y-4">
+	      <div class="space-y-4">
         <header class="space-y-1">
           <div class="text-base font-medium">{$i18n.t('Payment Details')}</div>
           <div class="text-xs text-gray-500">{$i18n.t('View your plan and payment history.')}</div>
@@ -382,21 +459,33 @@
 			<div class="mt-3 space-y-2">
 				<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Subscription Progress')}</div>
 				<div class="w-full bg-gray-200 rounded-full dark:bg-gray-800">
-				<!-- Dynamic Progress Bar -->
-				<div class="h-2 rounded-full bg-blue-500 dark:bg-blue-700" style="width: {calculateProgress(subscription.start_date, subscription.expiry_date)}%"></div>
+					<!-- Dynamic Progress Bar -->
+					<div class="h-2 rounded-full bg-blue-500 dark:bg-blue-700" style={`width: ${progressValue}%`}></div>
 				</div>
 				<div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-				{$i18n.t('Progress:')} {Math.round(calculateProgress(subscription.start_date, subscription.expiry_date))}% ({formatDate(subscription.start_date)} - {formatDate(subscription.expiry_date)})
+					{$i18n.t('Progress:')}
+					{Math.round(progressValue)}%
+					({formatDate(subscription.start_date)} - {formatDate(subscription.expiry_date)})
 				</div>
 			</div>
 
             <div class="mt-3 flex gap-2">
 			  <p class="text-xs text-gray-500 mt-2">{$i18n.t('Pause or cancel your subscription')}</p>
-              <button class="inline-flex items-center rounded-full bg-red-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-700" type="button">
-                {$i18n.t('Pause')}
+              <button
+								class="inline-flex items-center rounded-full bg-red-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+								type="button"
+								disabled={!canPause()}
+								on:click={handlePause}
+							>
+                {pauseLoading ? $i18n.t('Pausing...') : $i18n.t('Pause')}
               </button>
-              <button class="inline-flex items-center rounded-full bg-gray-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-gray-700" type="button">
-                {$i18n.t('Cancel')}
+              <button
+								class="inline-flex items-center rounded-full bg-gray-500 px-4 py-2 text-xs font-semibold text-white transition hover:bg-gray-700 disabled:opacity-60"
+								type="button"
+								disabled={!canCancel()}
+								on:click={handleCancel}
+							>
+                {cancelLoading ? $i18n.t('Canceling...') : $i18n.t('Cancel')}
               </button>
             </div>
 
@@ -495,27 +584,6 @@
 
 
 
-        <!-- Actions Section -->
-		<section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950 transition-shadow hover:shadow-md">
-			<!-- Header -->
-			<div class="text-sm font-semibold text-gray-900 dark:text-white">
-				{$i18n.t('Actions')}
-			</div>
-
-            <!-- Buttons -->
-            <div class="mt-3 flex flex-wrap gap-3">
-				{#if downloads.voucher_url}
-					<a
-						href={downloads.voucher_url}
-						class="px-4 py-2 rounded-lg font-semibold text-sm transition-colors duration-200 bg-green-600 text-white hover:bg-green-700"
-					>
-						{$i18n.t('Download Voucher (PDF)')}
-					</a>
-				{/if}
-
-				<!-- Invoice download removed -->
-            </div>
-        </section>
 
 
 		
@@ -556,7 +624,8 @@
 						{formatCurrency(item.amount)}
 					</div>
 					<div class="text-xs text-gray-500 dark:text-gray-400">
-						{item.invoice_id} - {formatDate(item.paid_date)}
+						{$i18n.t('Payment ID')}: {item.payment_id} · {$i18n.t('Invoice')}: {item.invoice_id} ·
+						{formatDate(item.paid_date)}
 					</div>
 					</div>
 
@@ -565,7 +634,16 @@
 					{$i18n.t(item.status)}
 					</span>
 
-					<!-- Invoice download removed -->
+					<button
+						type="button"
+						class="rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white transition hover:bg-gray-900 disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-gray-100"
+						disabled={invoiceDownloading[item.transaction_id]}
+						on:click={() => downloadInvoicePdf(item.transaction_id, item.invoice_id)}
+					>
+						{invoiceDownloading[item.transaction_id]
+							? $i18n.t('Downloading...')
+							: $i18n.t('Download Invoice (PDF)')}
+					</button>
 				</div>
 				{/each}
 			</div>
