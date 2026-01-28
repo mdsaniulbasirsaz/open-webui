@@ -2052,16 +2052,90 @@
 	const handleOpenAIError = async (error, responseMessage) => {
 		let errorMessage = '';
 		let innerError;
+		let handledAsNotice = false;
+
+		const formatTokenBudgetNotice = (detail) => {
+			if (!detail || typeof detail !== 'object') return null;
+			const limit = Number(detail.limit);
+			const used = Number(detail.used);
+			const remaining = Number(detail.remaining);
+
+			const limitText = Number.isFinite(limit) ? limit : 'Unknown';
+			const usedText = Number.isFinite(used) ? used : 'Unknown';
+			const remainingText = Number.isFinite(remaining) ? remaining : 'Unknown';
+
+			return `Limit: ${limitText}\nUsed: ${usedText}\nRemaining: ${remainingText}`;
+		};
+
+		const parseTokenBudgetNoticeFromString = (message) => {
+			if (typeof message !== 'string') return null;
+			const limitMatch = message.match(/Limit:\s*([0-9]+)/i);
+			const usedMatch = message.match(/Used:\s*([0-9]+)/i);
+			const remainingMatch = message.match(/Remaining:\s*([0-9]+)/i);
+			if (!limitMatch && !usedMatch && !remainingMatch) return null;
+
+			const detail = {
+				limit: limitMatch?.[1],
+				used: usedMatch?.[1],
+				remaining: remainingMatch?.[1]
+			};
+			return formatTokenBudgetNotice(detail);
+		};
 
 		if (error) {
 			innerError = error;
 		}
 
-		console.error(innerError);
-		if ('detail' in innerError) {
+		if (
+			!(innerError && typeof innerError === 'object' && innerError?.detail?.code === 'TOKEN_BUDGET_EXCEEDED')
+		) {
+			console.error(innerError);
+		}
+
+		if (typeof innerError === 'string') {
+			const isTokenBudgetNotice =
+				innerError.includes('Monthly token limit exceeded') ||
+				(innerError.includes('Limit:') && innerError.includes('Used:') && innerError.includes('Resets:'));
+
+			if (isTokenBudgetNotice) {
+				const tokenBudgetNotice = parseTokenBudgetNoticeFromString(innerError);
+				toast.warning(tokenBudgetNotice ?? innerError);
+				handledAsNotice = true;
+			} else {
+				toast.error(innerError);
+			}
+
+			errorMessage = isTokenBudgetNotice ? parseTokenBudgetNoticeFromString(innerError) ?? innerError : innerError;
+		} else if (innerError && typeof innerError === 'object' && 'detail' in innerError) {
 			// FastAPI error
-			toast.error(innerError.detail);
-			errorMessage = innerError.detail;
+			const detail = innerError.detail;
+
+			if (
+				detail &&
+				typeof detail === 'object' &&
+				'code' in detail &&
+				detail.code === 'TOKEN_BUDGET_EXCEEDED'
+			) {
+				const resetAtSeconds = Number(detail.reset_at);
+				const resetAtLocal =
+					Number.isFinite(resetAtSeconds) && resetAtSeconds > 0
+						? new Date(resetAtSeconds * 1000).toLocaleString()
+						: 'Unknown';
+
+				const limit = Number(detail.limit);
+				const used = Number(detail.used);
+				const remaining = Number(detail.remaining);
+
+				const msg = formatTokenBudgetNotice({ limit, used, remaining });
+
+				toast.warning(msg);
+				errorMessage = msg;
+				handledAsNotice = true;
+			} else {
+				const msg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+				toast.error(msg);
+				errorMessage = msg;
+			}
 		} else if ('error' in innerError) {
 			// OpenAI error
 			if ('message' in innerError.error) {
@@ -2078,7 +2152,9 @@
 		}
 
 		responseMessage.error = {
-			content: $i18n.t(`Uh-oh! There was an issue with the response.`) + '\n' + errorMessage
+			content: handledAsNotice
+				? errorMessage
+				: $i18n.t(`Uh-oh! There was an issue with the response.`) + '\n' + errorMessage
 		};
 		responseMessage.done = true;
 

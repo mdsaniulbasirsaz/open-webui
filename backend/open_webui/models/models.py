@@ -18,9 +18,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import BigInteger, Column, Text, JSON, Boolean
 
 
-from open_webui.utils.access_control import has_access
-
-
 log = logging.getLogger(__name__)
 
 
@@ -221,6 +218,8 @@ class ModelsTable:
     def get_models_by_user_id(
         self, user_id: str, permission: str = "write", db: Optional[Session] = None
     ) -> list[ModelUserResponse]:
+        from open_webui.utils.access_control import has_access
+
         models = self.get_models(db=db)
         user_group_ids = {
             group.id for group in Groups.get_groups_by_member_id(user_id, db=db)

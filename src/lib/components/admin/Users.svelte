@@ -8,6 +8,7 @@
 
 	import UserList from './Users/UserList.svelte';
 	import Groups from './Users/Groups.svelte';
+	import TokenBudgets from './Users/TokenBudgets.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -15,7 +16,9 @@
 	$: {
 		const pathParts = $page.url.pathname.split('/');
 		const tabFromPath = pathParts[pathParts.length - 1];
-		selectedTab = ['overview', 'groups'].includes(tabFromPath) ? tabFromPath : 'overview';
+		selectedTab = ['overview', 'groups', 'token-budgets'].includes(tabFromPath)
+			? tabFromPath
+			: 'overview';
 	}
 
 	$: if (selectedTab) {
@@ -109,6 +112,31 @@
 			</div>
 			<div class=" self-center">{$i18n.t('Groups')}</div>
 		</button>
+
+		<button
+			id="token-budgets"
+			class="px-0.5 py-1 min-w-fit rounded-lg lg:flex-none flex text-right transition {selectedTab ===
+			'token-budgets'
+				? ''
+				: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'}"
+			on:click={() => {
+				goto('/admin/users/token-budgets');
+			}}
+		>
+			<div class=" self-center mr-2">
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 16 16"
+					fill="currentColor"
+					class="size-4"
+				>
+					<path
+						d="M8 1a.5.5 0 0 1 .5.5V2h1.5a.5.5 0 0 1 0 1H8.5v1.5a.5.5 0 0 1-1 0V3H6a.5.5 0 0 1 0-1h1.5V1.5A.5.5 0 0 1 8 1Zm4 4a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 0 1h-.5v.5a.5.5 0 0 1-1 0V7h-.5a.5.5 0 0 1 0-1h.5v-.5A.5.5 0 0 1 12 5Zm-8 2.5a.5.5 0 0 1 .5.5v.5H5a.5.5 0 0 1 0 1h-.5v.5a.5.5 0 0 1-1 0V10H3a.5.5 0 0 1 0-1h.5v-.5A.5.5 0 0 1 4 7.5ZM2.5 12A1.5 1.5 0 0 0 4 13.5h8A1.5 1.5 0 0 0 13.5 12V9a.5.5 0 0 0-1 0v3A.5.5 0 0 1 12 12.5H4a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 0 0-1H4A1.5 1.5 0 0 0 2.5 5v7Z"
+					/>
+				</svg>
+			</div>
+			<div class=" self-center">{$i18n.t('Token Budgets')}</div>
+		</button>
 	</div>
 
 	<div class="flex-1 mt-1 lg:mt-0 px-[16px] lg:pr-[16px] lg:pl-0 overflow-y-scroll">
@@ -116,6 +144,8 @@
 			<UserList />
 		{:else if selectedTab === 'groups'}
 			<Groups />
+		{:else if selectedTab === 'token-budgets'}
+			<TokenBudgets />
 		{/if}
 	</div>
 </div>

@@ -562,7 +562,17 @@ WEBUI_AUTH_COOKIE_SECURE = (
     == "true"
 )
 
-if WEBUI_AUTH and WEBUI_SECRET_KEY == "":
+def _skip_required_env_validation() -> bool:
+    if os.environ.get("SKIP_ENV_VALIDATION", "False").lower() == "true":
+        return True
+
+    # Alembic CLI imports `open_webui.env` while generating revisions; avoid
+    # blocking migrations on runtime-only config validation.
+    argv = " ".join(sys.argv).lower()
+    return "alembic" in argv
+
+
+if WEBUI_AUTH and WEBUI_SECRET_KEY == "" and not _skip_required_env_validation():
     raise ValueError(ERROR_MESSAGES.ENV_VAR_NOT_FOUND)
 
 ENABLE_COMPRESSION_MIDDLEWARE = (

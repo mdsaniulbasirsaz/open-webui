@@ -10,7 +10,7 @@ import inspect
 import uuid
 import asyncio
 
-from fastapi import Request, status
+from fastapi import HTTPException, Request, status
 from starlette.responses import Response, StreamingResponse, JSONResponse
 
 
@@ -55,11 +55,29 @@ from open_webui.utils.filter import (
     process_filter_functions,
 )
 
+from open_webui.utils.token_budget import TokenBudgetExceededError, TokenBudgetService
+
 from open_webui.env import GLOBAL_LOG_LEVEL, BYPASS_MODEL_ACCESS_CONTROL
 
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
 log = logging.getLogger(__name__)
+
+
+def _estimate_tokens_from_form_data(data: dict) -> int:
+    # MVP: conservative completion estimate from known params; prompt estimate is 0.
+    candidates = [
+        data.get("max_tokens"),
+        data.get("max_completion_tokens"),
+        (data.get("options") or {}).get("num_predict"),  # ollama-ish
+    ]
+    for value in candidates:
+        try:
+            if value is not None:
+                return max(int(value), 0)
+        except Exception:
+            continue
+    return 256
 
 
 async def generate_direct_chat_completion(
@@ -72,9 +90,40 @@ async def generate_direct_chat_completion(
 
     metadata = form_data.pop("metadata", {})
 
-    user_id = metadata.get("user_id")
+    # Never trust client-provided identifiers for accounting or channel naming.
+    user_id = getattr(user, "id", None)
     session_id = metadata.get("session_id")
+    # Always generate server-side to prevent request_id reuse bypassing token budgets.
     request_id = str(uuid.uuid4())  # Generate a unique request ID
+
+    token_budget_estimate = _estimate_tokens_from_form_data(form_data)
+    try:
+        budget_status = TokenBudgetService.reserve(
+            user_id=user.id,
+            request_id=request_id,
+            estimate_tokens=token_budget_estimate,
+            model_id=form_data.get("model"),
+            provider=(models.get(form_data.get("model")) or {}).get("owned_by"),
+            route="chat:completion:direct",
+            metadata={
+                "session_id": session_id,
+                "channel": f"{user_id}:{session_id}:{request_id}",
+            },
+        )
+        if budget_status is not None:
+            request.state.token_budget_active = True
+            request.state.token_budget_request_id = request_id
+            request.state.token_budget_estimate_tokens = token_budget_estimate
+    except TokenBudgetExceededError as e:
+        # Return stable JSON payload for UI consumption.
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=e.to_error_payload(),
+        )
+    except Exception:
+        # Reserve failures should not block chat completions, but enforcement will be disabled.
+        log.exception("TokenBudgetService.reserve failed (direct path); enforcement disabled.")
+        request.state.token_budget_active = False
 
     event_caller = get_event_call(metadata)
 
@@ -112,22 +161,135 @@ async def generate_direct_chat_completion(
             # Define a generator to stream responses
             async def event_generator():
                 nonlocal q
+                last_usage: dict = {}
                 try:
                     while True:
                         data = await q.get()  # Wait for new messages
                         if isinstance(data, dict):
+                            usage = data.get("usage", {}) or {}
+                            if usage:
+                                last_usage = usage
                             if "done" in data and data["done"]:
+                                if (
+                                    getattr(request.state, "token_budget_active", False)
+                                    and getattr(request.state, "token_budget_request_id", None)
+                                    and not getattr(request.state, "token_budget_finalized", False)
+                                ):
+                                    if usage:
+                                        try:
+                                            TokenBudgetService.finalize(
+                                                request_id=request_id,
+                                                prompt_tokens=int(
+                                                    usage.get("prompt_tokens") or 0
+                                                ),
+                                                completion_tokens=int(
+                                                    usage.get("completion_tokens") or 0
+                                                ),
+                                                total_tokens=usage.get("total_tokens"),
+                                                status="success",
+                                            )
+                                        except Exception:
+                                            log.exception(
+                                                "TokenBudgetService.finalize failed (direct stream)."
+                                            )
+                                    else:
+                                        try:
+                                            TokenBudgetService.finalize(
+                                                request_id=request_id,
+                                                total_tokens=int(token_budget_estimate),
+                                                status="canceled",
+                                                metadata={
+                                                    "estimated": True,
+                                                    "note": "No provider usage received for direct stream; charged estimate.",
+                                                },
+                                            )
+                                        except Exception:
+                                            log.exception(
+                                                "TokenBudgetService.finalize failed (direct stream estimate)."
+                                            )
+                                    request.state.token_budget_finalized = True
                                 break  # Stop streaming when 'done' is received
 
                             yield f"data: {json.dumps(data)}\n\n"
                         elif isinstance(data, str):
+                            done = False
+                            line = data
+                            if line.startswith("data:"):
+                                payload = line[len("data:") :].strip()
+                                if payload == "[DONE]":
+                                    done = True
+                                else:
+                                    try:
+                                        parsed = json.loads(payload)
+                                        if isinstance(parsed, dict):
+                                            usage = parsed.get("usage", {}) or {}
+                                            if usage:
+                                                last_usage = usage
+                                            done = bool(parsed.get("done"))
+                                    except Exception:
+                                        pass
                             if "data:" in data:
                                 yield f"{data}\n\n"
                             else:
                                 yield f"data: {data}\n\n"
+                            if done:
+                                break
                 except Exception as e:
                     log.debug(f"Error in event generator: {e}")
+                    if (
+                        getattr(request.state, "token_budget_active", False)
+                        and getattr(request.state, "token_budget_request_id", None)
+                        and not getattr(request.state, "token_budget_finalized", False)
+                    ):
+                        try:
+                            TokenBudgetService.release(
+                                request_id=request_id, status="error"
+                            )
+                        except Exception:
+                            log.exception(
+                                "TokenBudgetService.release failed (direct stream)."
+                            )
+                        request.state.token_budget_finalized = True
                     pass
+                finally:
+                    if (
+                        getattr(request.state, "token_budget_active", False)
+                        and getattr(request.state, "token_budget_request_id", None)
+                        and not getattr(request.state, "token_budget_finalized", False)
+                    ):
+                        if last_usage:
+                            try:
+                                TokenBudgetService.finalize(
+                                    request_id=request_id,
+                                    prompt_tokens=int(
+                                        last_usage.get("prompt_tokens") or 0
+                                    ),
+                                    completion_tokens=int(
+                                        last_usage.get("completion_tokens") or 0
+                                    ),
+                                    total_tokens=last_usage.get("total_tokens"),
+                                    status="success",
+                                )
+                            except Exception:
+                                log.exception(
+                                    "TokenBudgetService.finalize failed (direct stream finally)."
+                                )
+                        else:
+                            try:
+                                TokenBudgetService.finalize(
+                                    request_id=request_id,
+                                    total_tokens=int(token_budget_estimate),
+                                    status="canceled",
+                                    metadata={
+                                        "estimated": True,
+                                        "note": "Stream ended without usage; charged estimate.",
+                                    },
+                                )
+                            except Exception:
+                                log.exception(
+                                    "TokenBudgetService.finalize failed (direct stream finally estimate)."
+                                )
+                        request.state.token_budget_finalized = True
 
             # Define a background task to run the event generator
             async def background():
@@ -143,20 +305,66 @@ async def generate_direct_chat_completion(
         else:
             raise Exception(str(res))
     else:
-        res = await event_caller(
-            {
-                "type": "request:chat:completion",
-                "data": {
-                    "form_data": form_data,
-                    "model": models[form_data["model"]],
-                    "channel": channel,
-                    "session_id": session_id,
-                },
-            }
-        )
+        try:
+            res = await event_caller(
+                {
+                    "type": "request:chat:completion",
+                    "data": {
+                        "form_data": form_data,
+                        "model": models[form_data["model"]],
+                        "channel": channel,
+                        "session_id": session_id,
+                    },
+                }
+            )
+        except Exception:
+            if getattr(request.state, "token_budget_active", False):
+                TokenBudgetService.release(request_id=request_id, status="error")
+            raise
 
         if "error" in res and res["error"]:
+            if getattr(request.state, "token_budget_active", False):
+                try:
+                    TokenBudgetService.release(request_id=request_id, status="error")
+                except Exception:
+                    log.exception(
+                        "TokenBudgetService.release failed (direct non-stream)."
+                    )
             raise Exception(res["error"])
+
+        if (
+            getattr(request.state, "token_budget_active", False)
+            and getattr(request.state, "token_budget_request_id", None)
+            and not getattr(request.state, "token_budget_finalized", False)
+        ):
+            usage = (res or {}).get("usage") or {}
+            if usage:
+                try:
+                    TokenBudgetService.finalize(
+                        request_id=request_id,
+                        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                        completion_tokens=int(usage.get("completion_tokens") or 0),
+                        total_tokens=usage.get("total_tokens"),
+                        status="success",
+                    )
+                except Exception:
+                    log.exception("TokenBudgetService.finalize failed (direct non-stream).")
+            else:
+                try:
+                    TokenBudgetService.finalize(
+                        request_id=request_id,
+                        total_tokens=int(token_budget_estimate),
+                        status="success",
+                        metadata={
+                            "estimated": True,
+                            "note": "No provider usage received for direct non-stream; charged estimate.",
+                        },
+                    )
+                except Exception:
+                    log.exception(
+                        "TokenBudgetService.finalize failed (direct non-stream estimate)."
+                    )
+            request.state.token_budget_finalized = True
 
         return res
 
@@ -263,21 +471,70 @@ async def generate_chat_completion(
                     "selected_model_id": selected_model_id,
                 }
 
+        # Reserve token budget before provider call (stream + non-stream).
+        # Always generate server-side to prevent client-controlled request_id reuse.
+        token_budget_request_id = str(uuid.uuid4())
+
+        token_budget_estimate = _estimate_tokens_from_form_data(form_data)
+        try:
+            budget_status = TokenBudgetService.reserve(
+                user_id=user.id,
+                request_id=token_budget_request_id,
+                estimate_tokens=token_budget_estimate,
+                model_id=form_data.get("model"),
+                provider=model.get("owned_by"),
+                route="chat:completion",
+                metadata={
+                    "chat_id": form_data.get("chat_id"),
+                    "message_id": form_data.get("id"),
+                    "session_id": form_data.get("session_id"),
+                },
+            )
+            if budget_status is not None:
+                request.state.token_budget_active = True
+                request.state.token_budget_request_id = token_budget_request_id
+                request.state.token_budget_estimate_tokens = token_budget_estimate
+                # Preserve for internal traces/debugging only.
+                form_data.setdefault("metadata", {})["request_id"] = token_budget_request_id
+        except TokenBudgetExceededError as e:
+            # Return stable JSON payload for UI consumption.
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=e.to_error_payload(),
+            )
+        except Exception:
+            # unexpected reserve failures should not block chat completions.
+            request.state.token_budget_active = False
+
         if model.get("pipe"):
             # Below does not require bypass_filter because this is the only route the uses this function and it is already bypassing the filter
-            return await generate_function_chat_completion(
-                request, form_data, user=user, models=models
-            )
+            try:
+                return await generate_function_chat_completion(
+                    request, form_data, user=user, models=models
+                )
+            except Exception:
+                if getattr(request.state, "token_budget_active", False):
+                    TokenBudgetService.release(
+                        request_id=token_budget_request_id, status="error"
+                    )
+                raise
         if model.get("owned_by") == "ollama":
             # Using /ollama/api/chat endpoint
-            form_data = convert_payload_openai_to_ollama(form_data)
-            response = await generate_ollama_chat_completion(
-                request=request,
-                form_data=form_data,
-                user=user,
-                bypass_filter=bypass_filter,
-                bypass_system_prompt=bypass_system_prompt,
-            )
+            try:
+                form_data = convert_payload_openai_to_ollama(form_data)
+                response = await generate_ollama_chat_completion(
+                    request=request,
+                    form_data=form_data,
+                    user=user,
+                    bypass_filter=bypass_filter,
+                    bypass_system_prompt=bypass_system_prompt,
+                )
+            except Exception:
+                if getattr(request.state, "token_budget_active", False):
+                    TokenBudgetService.release(
+                        request_id=token_budget_request_id, status="error"
+                    )
+                raise
             if form_data.get("stream"):
                 response.headers["content-type"] = "text/event-stream"
                 return StreamingResponse(
@@ -286,15 +543,52 @@ async def generate_chat_completion(
                     background=response.background,
                 )
             else:
-                return convert_response_ollama_to_openai(response)
+                converted = convert_response_ollama_to_openai(response)
+                if getattr(request.state, "token_budget_active", False):
+                    usage = (converted or {}).get("usage") or {}
+                    TokenBudgetService.finalize(
+                        request_id=token_budget_request_id,
+                        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                        completion_tokens=int(usage.get("completion_tokens") or 0),
+                        total_tokens=usage.get("total_tokens"),
+                        status="success",
+                    )
+                return converted
         else:
-            return await generate_openai_chat_completion(
-                request=request,
-                form_data=form_data,
-                user=user,
-                bypass_filter=bypass_filter,
-                bypass_system_prompt=bypass_system_prompt,
-            )
+            try:
+                result = await generate_openai_chat_completion(
+                    request=request,
+                    form_data=form_data,
+                    user=user,
+                    bypass_filter=bypass_filter,
+                    bypass_system_prompt=bypass_system_prompt,
+                )
+            except Exception:
+                if getattr(request.state, "token_budget_active", False):
+                    TokenBudgetService.release(
+                        request_id=token_budget_request_id, status="error"
+                    )
+                raise
+
+            if getattr(request.state, "token_budget_active", False) and not form_data.get(
+                "stream"
+            ):
+                usage = (result or {}).get("usage") or {}
+                if usage:
+                    TokenBudgetService.finalize(
+                        request_id=token_budget_request_id,
+                        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                        completion_tokens=int(usage.get("completion_tokens") or 0),
+                        total_tokens=usage.get("total_tokens"),
+                        status="success",
+                    )
+                else:
+                    TokenBudgetService.finalize(
+                        request_id=token_budget_request_id,
+                        total_tokens=int(token_budget_estimate),
+                        status="success",
+                    )
+            return result
 
 
 chat_completion = generate_chat_completion

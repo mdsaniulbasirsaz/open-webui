@@ -29,7 +29,6 @@ from sqlalchemy import (
     or_,
 )
 
-from open_webui.utils.access_control import has_access
 from open_webui.utils.db.access_control import has_permission
 
 
@@ -339,6 +338,8 @@ class KnowledgeTable:
     def check_access_by_user_id(
         self, id, user_id, permission="write", db: Optional[Session] = None
     ) -> bool:
+        from open_webui.utils.access_control import has_access
+
         knowledge = self.get_knowledge_by_id(id, db=db)
         if not knowledge:
             return False
@@ -352,6 +353,8 @@ class KnowledgeTable:
     def get_knowledge_bases_by_user_id(
         self, user_id: str, permission: str = "write", db: Optional[Session] = None
     ) -> list[KnowledgeUserModel]:
+        from open_webui.utils.access_control import has_access
+
         knowledge_bases = self.get_knowledge_bases(db=db)
         user_group_ids = {
             group.id for group in Groups.get_groups_by_member_id(user_id, db=db)
@@ -378,6 +381,8 @@ class KnowledgeTable:
     def get_knowledge_by_id_and_user_id(
         self, id: str, user_id: str, db: Optional[Session] = None
     ) -> Optional[KnowledgeModel]:
+        from open_webui.utils.access_control import has_access
+
         knowledge = self.get_knowledge_by_id(id, db=db)
         if not knowledge:
             return None

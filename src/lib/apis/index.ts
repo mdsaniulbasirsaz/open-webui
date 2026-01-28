@@ -508,6 +508,34 @@ export const executeToolServer = async (
 		const res = await fetch(finalUrl, requestOptions);
 		if (!res.ok) {
 			const resText = await res.text();
+			let parsed: any = null;
+			try {
+				parsed = JSON.parse(resText);
+			} catch {
+				parsed = null;
+			}
+
+			const detail = parsed?.detail;
+			if (detail && typeof detail === 'object' && detail.code === 'TOKEN_BUDGET_EXCEEDED') {
+				const resetAtSeconds = Number(detail.reset_at);
+				const resetAtLocal =
+					Number.isFinite(resetAtSeconds) && resetAtSeconds > 0
+						? new Date(resetAtSeconds * 1000).toLocaleString()
+						: 'Unknown';
+
+				const limit = Number(detail.limit);
+				const used = Number(detail.used);
+				const remaining = Number(detail.remaining);
+
+				const msg = `${
+					detail.message || 'Monthly token limit exceeded.'
+				}\nLimit: ${Number.isFinite(limit) ? limit : 'Unknown'}\nUsed: ${
+					Number.isFinite(used) ? used : 'Unknown'
+				}\nRemaining: ${Number.isFinite(remaining) ? remaining : 'Unknown'}\nResets: ${resetAtLocal}`;
+				throw new Error(msg);
+			}
+
+			// Keep legacy behavior for non-token-budget errors.
 			throw new Error(`HTTP error! Status: ${res.status}. Message: ${resText}`);
 		}
 

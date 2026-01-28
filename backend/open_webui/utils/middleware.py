@@ -106,6 +106,7 @@ from open_webui.utils.filter import (
 from open_webui.utils.code_interpreter import execute_code_jupyter
 from open_webui.utils.payload import apply_system_prompt_to_body
 from open_webui.utils.mcp.client import MCPClient
+from open_webui.utils.token_budget import TokenBudgetService
 
 
 from open_webui.config import (
@@ -2849,6 +2850,19 @@ async def process_chat_response(
                                     usage = data.get("usage", {}) or {}
                                     usage.update(data.get("timings", {}))  # llama.cpp
                                     if usage:
+                                        if (
+                                            getattr(request.state, "token_budget_active", False)
+                                            and getattr(request.state, "token_budget_request_id", None)
+                                            and not getattr(request.state, "token_budget_finalized", False)
+                                        ):
+                                            TokenBudgetService.finalize(
+                                                request_id=request.state.token_budget_request_id,
+                                                prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                                                completion_tokens=int(usage.get("completion_tokens") or 0),
+                                                total_tokens=usage.get("total_tokens"),
+                                                status="success",
+                                            )
+                                            request.state.token_budget_finalized = True
                                         await event_emitter(
                                             {
                                                 "type": "chat:completion",
@@ -3198,6 +3212,33 @@ async def process_chat_response(
 
                     if response.background:
                         await response.background()
+
+                    if (
+                        getattr(request.state, "token_budget_active", False)
+                        and getattr(request.state, "token_budget_request_id", None)
+                        and not getattr(request.state, "token_budget_finalized", False)
+                    ):
+                        # Streaming responses often don't include usage (e.g. OpenAI streams without
+                        # stream_options.include_usage). If we only "release", users can avoid
+                        # budget enforcement by canceling/streaming.
+                        TokenBudgetService.finalize(
+                            request_id=request.state.token_budget_request_id,
+                            prompt_tokens=0,
+                            completion_tokens=int(
+                                getattr(request.state, "token_budget_estimate_tokens", 0)
+                                or 0
+                            ),
+                            total_tokens=int(
+                                getattr(request.state, "token_budget_estimate_tokens", 0)
+                                or 0
+                            ),
+                            status="canceled",
+                            metadata={
+                                "estimated": True,
+                                "note": "No provider usage received for stream; charged estimate.",
+                            },
+                        )
+                        request.state.token_budget_finalized = True
 
                 await stream_body_handler(response, form_data)
 

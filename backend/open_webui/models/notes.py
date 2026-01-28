@@ -7,7 +7,6 @@ from functools import lru_cache
 from sqlalchemy.orm import Session
 from open_webui.internal.db import Base, get_db, get_db_context
 from open_webui.models.groups import Groups
-from open_webui.utils.access_control import has_access
 from open_webui.models.users import User, UserModel, Users, UserResponse
 
 

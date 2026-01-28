@@ -93,6 +93,32 @@ When adding or changing models:
 5) If `ENABLE_DB_MIGRATIONS` is used for peewee migrations, add a matching migration in `open_webui/internal/migrations/`.
 6) Update routers in `open_webui/routers/` to expose endpoints and use `Depends(get_session)` for DB access.
 
+## Database migrations (Peewee + Alembic)
+
+On startup (when `ENABLE_DB_MIGRATIONS=True`), OpenWebUI runs:
+1) Peewee migrations from `open_webui/internal/migrations/` (via `peewee_migrate.Router`)
+2) Alembic migrations from `open_webui/migrations/` (upgrade to `heads`)
+
+### Run migrations locally
+
+From `open-webui/backend/` with the venv activated:
+- Upgrade DB to latest:
+  - `alembic upgrade heads`
+- Check current revision:
+  - `alembic current`
+- See history:
+  - `alembic history --verbose`
+
+### Create a new Alembic migration
+
+1) Make your SQLAlchemy model changes under `open_webui/models/`.
+2) Ensure required env vars are set for imports (minimum: `DATABASE_URL`; for web auth deployments also set `WEBUI_SECRET_KEY`).
+3) Generate a revision:
+   - `alembic revision --autogenerate -m "Your message"`
+4) Review the generated file in `open_webui/migrations/versions/` and edit as needed.
+
+Tip: if you want to generate migrations without providing full runtime env, you can set `SKIP_ENV_VALIDATION=True` for the Alembic command invocation.
+
 ## Adding email verification
 
 Email verification is not implemented yet. Here is a safe, minimal plan that fits the current architecture.

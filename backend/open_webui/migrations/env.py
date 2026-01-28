@@ -1,9 +1,38 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
-from open_webui.models.auths import Auth
+
+# Alembic loads this module for CLI operations (revision/autogenerate, upgrade, etc).
+# Disable runtime "startup migrations" side-effects while Alembic is running.
+os.environ.setdefault("ENABLE_DB_MIGRATIONS", "False")
+
 from open_webui.env import DATABASE_URL, DATABASE_PASSWORD
 from sqlalchemy import engine_from_config, pool, create_engine
+
+from open_webui.internal.db import Base
+
+# Ensure all SQLAlchemy table modules are imported so their tables are registered on Base.metadata.
+import importlib
+import pkgutil
+import open_webui.models as models_pkg
+
+for m in pkgutil.iter_modules(models_pkg.__path__):
+    importlib.import_module(f"{models_pkg.__name__}.{m.name}")
+
+# Tables defined outside `open_webui/models/`
+importlib.import_module("open_webui.config")
+
+# Vector DB backends may depend on optional runtime configuration; load them if possible
+# so their tables are present during autogenerate.
+for optional_module in (
+    "open_webui.retrieval.vector.dbs.pgvector",
+    "open_webui.retrieval.vector.dbs.opengauss",
+):
+    try:
+        importlib.import_module(optional_module)
+    except Exception:
+        pass
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -18,7 +47,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = Auth.metadata
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -47,6 +76,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        include_object=_include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -96,10 +126,27 @@ def run_migrations_online() -> None:
         )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=_include_object,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
+
+
+def _include_object(object_, name, type_, reflected, compare_to):
+    # Peewee migration history table (and any other non-SQLAlchemy tables) should not
+    # be managed by Alembic autogenerate.
+    if type_ == "table" and name in {"migratehistory"}:
+        return False
+
+    parent_table = getattr(object_, "table", None)
+    if parent_table is not None and parent_table.name in {"migratehistory"}:
+        return False
+
+    return True
 
 
 if context.is_offline_mode():
