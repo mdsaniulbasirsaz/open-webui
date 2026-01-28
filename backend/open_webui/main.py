@@ -95,6 +95,7 @@ from open_webui.routers import (
     users,
     utils,
     token_budgets,
+    token_usage,
     scim,
 )
 
@@ -1477,6 +1478,7 @@ app.include_router(documents.router, prefix="/api/v1/documents", tags=["document
 app.include_router(functions.router, prefix="/api/v1/functions", tags=["functions"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(token_budgets.router, prefix="/api/v1", tags=["token-budgets"])
+app.include_router(token_usage.router, prefix="/api/v1", tags=["token-usage"])
 app.include_router(
     evaluations.router, prefix="/api/v1/evaluations", tags=["evaluations"]
 )

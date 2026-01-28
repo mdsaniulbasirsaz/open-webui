@@ -9,6 +9,7 @@
 	import Modal from '../common/Modal.svelte';
 	import Account from './Settings/Account.svelte';
 	import PaymentDetails from './Settings/PaymentDetails.svelte';
+	import TokenUsage from './Settings/TokenUsage.svelte';
 	import About from './Settings/About.svelte';
 	import General from './Settings/General.svelte';
 	import Interface from './Settings/Interface.svelte';
@@ -24,6 +25,7 @@
 	import Link from '../icons/Link.svelte';
 	import UserCircle from '../icons/UserCircle.svelte';
 	import DocumentCheck from '../icons/DocumentCheck.svelte';
+	import ChartBar from '../icons/ChartBar.svelte';
 	import SoundHigh from '../icons/SoundHigh.svelte';
 	import InfoCircle from '../icons/InfoCircle.svelte';
 	import WrenchAlt from '../icons/WrenchAlt.svelte';
@@ -434,6 +436,20 @@
 				'plan',
 				'subscription',
 				'voucher'
+			]
+		},
+		{
+			id: 'token_usage',
+			title: 'Uses Token',
+			keywords: [
+				'budget',
+				'limit',
+				'model usage',
+				'token',
+				'token usage',
+				'tokens',
+				'usage',
+				'usage history'
 			]
 		},
 		{
@@ -863,6 +879,32 @@
 									<div class="self-center">{$i18n.t('Payment Details')}</div>
 								</button>
 							{/if}
+						{:else if tabId === 'token_usage'}
+							{#if $user?.role === 'user'}
+								<button
+									role="tab"
+									aria-controls="tab-token-usage"
+									aria-selected={selectedTab === 'token_usage'}
+									class={`px-0.5 md:px-2.5 py-1 min-w-fit rounded-xl flex-1 md:flex-none flex text-left transition
+									${
+										selectedTab === 'token_usage'
+											? ($settings?.highContrastMode ?? false)
+												? 'dark:bg-gray-800 bg-gray-200'
+												: ''
+											: ($settings?.highContrastMode ?? false)
+												? 'hover:bg-gray-200 dark:hover:bg-gray-800'
+												: 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'
+									}`}
+									on:click={() => {
+										selectedTab = 'token_usage';
+									}}
+								>
+									<div class="self-center mr-2">
+										<ChartBar strokeWidth="2" />
+									</div>
+									<div class="self-center">{$i18n.t('Uses Token')}</div>
+								</button>
+							{/if}
 						{:else if tabId === 'about'}
 							<button
 								role="tab"
@@ -969,6 +1011,14 @@
 				{:else if selectedTab === 'payment_details'}
 					{#if $user?.role === 'user'}
 						<PaymentDetails />
+					{:else}
+						<div class="p-4 text-sm text-red-500">
+							{$i18n.t('You are not authorized to view this section')}
+						</div>
+					{/if}
+				{:else if selectedTab === 'token_usage'}
+					{#if $user?.role === 'user'}
+						<TokenUsage />
 					{:else}
 						<div class="p-4 text-sm text-red-500">
 							{$i18n.t('You are not authorized to view this section')}
