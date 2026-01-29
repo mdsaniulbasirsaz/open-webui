@@ -101,6 +101,8 @@
 		'/auth',
 		'/auth/forgot-password',
 		'/auth/reset-password',
+		'/auth/about',
+		'/auth/about/',
 		'/pricing',
 		'/error',
 		'/cancel',
