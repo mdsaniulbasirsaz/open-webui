@@ -75,6 +75,16 @@ class SignupForm(BaseModel):
     profile_image_url: Optional[str] = "/user.png"
 
 
+class PasswordResetRequestForm(BaseModel):
+    email: str
+
+
+class PasswordResetConfirmForm(BaseModel):
+    token: str
+    password: str
+    email: Optional[str] = None
+
+
 class AddUserForm(SignupForm):
     role: Optional[str] = "pending"
 

@@ -695,11 +695,7 @@
 														<button
 															class="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white underline decoration-slate-400/50 underline-offset-4 transition"
 															type="button"
-															on:click={() => {
-																toast.info(
-																	$i18n.t('Please contact your administrator to reset your password.')
-																);
-															}}
+															on:click={() => goto('/auth/forgot-password')}
 														>
 															{$i18n.t('Forgot password?')}
 														</button>

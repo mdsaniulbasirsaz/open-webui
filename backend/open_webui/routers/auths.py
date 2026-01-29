@@ -11,6 +11,8 @@ from open_webui.models.auths import (
     AddUserForm,
     ApiKey,
     Auths,
+    PasswordResetRequestForm,
+    PasswordResetConfirmForm,
     Token,
     LdapForm,
     SigninForm,
@@ -45,6 +47,8 @@ from open_webui.env import (
     ENABLE_EMAIL_VERIFICATION_LINK,
     EMAIL_VERIFICATION_LINK_TTL,
     EMAIL_VERIFICATION_LINK_BASE_URL,
+    PASSWORD_RESET_TOKEN_TTL,
+    PASSWORD_RESET_LINK_BASE_URL,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
@@ -83,8 +87,14 @@ from open_webui.utils.email_verification import (
     generate_verification_token,
     hash_verification_token,
 )
-from open_webui.utils.email import build_signup_verification_email, send_email
+from open_webui.utils.email import (
+    build_password_reset_email,
+    build_password_reset_confirmation_email,
+    build_signup_verification_email,
+    send_email,
+)
 from open_webui.models.email_verifications import EmailVerifications
+from open_webui.models.password_reset import PasswordResetRequests
 
 from open_webui.utils.redis import get_redis_client
 from open_webui.utils.rate_limit import RateLimiter
@@ -103,6 +113,20 @@ log = logging.getLogger(__name__)
 
 signin_rate_limiter = RateLimiter(
     redis_client=get_redis_client(), limit=5 * 3, window=60 * 3
+)
+
+# Separate limiters so a single request doesn't "spend" multiple increments on the same limiter.
+password_reset_email_rate_limiter = RateLimiter(
+    redis_client=get_redis_client(), limit=5, window=60 * 5
+)
+password_reset_ip_rate_limiter = RateLimiter(
+    redis_client=get_redis_client(), limit=20, window=60 * 5
+)
+password_reset_validate_rate_limiter = RateLimiter(
+    redis_client=get_redis_client(), limit=60, window=60
+)
+password_reset_confirm_rate_limiter = RateLimiter(
+    redis_client=get_redis_client(), limit=30, window=60
 )
 
 
@@ -153,7 +177,7 @@ async def _issue_email_verification(
                 f"{link_base}/auth?"
                 f"token={urllib.parse.quote(verification_token)}&"
                 f"email={urllib.parse.quote(email)}"
-            )
+    )
     subject, html, text = build_signup_verification_email(
         webui_name=webui_name,
         otp=otp,
@@ -178,7 +202,120 @@ async def _issue_email_verification(
         db=db,
     )
 
+
+async def _issue_password_reset_email(
+    request: Request,
+    email: str,
+    user_id: str,
+    webui_name: str,
+    db: Session,
+) -> None:
+    ttl_seconds = _get_duration_seconds(PASSWORD_RESET_TOKEN_TTL, 60 * 60)
+    now = int(time.time())
+    expires_at = now + ttl_seconds
+
+    token = create_token(
+        data={"id": user_id, "email": email, "purpose": "password_reset"},
+        expires_delta=datetime.timedelta(seconds=ttl_seconds),
+    )
+    token_hash = hash_verification_token(token)
+
+    base_override = (PASSWORD_RESET_LINK_BASE_URL or "").strip()
+    base_url = (
+        base_override
+        or (request.app.state.config.WEBUI_URL or "").strip()
+        or str(request.base_url)
+    )
+    base_url = base_url.rstrip("/")
+    reset_link = (
+        f"{base_url}/auth/reset-password?"
+        f"token={urllib.parse.quote(token)}&"
+        f"email={urllib.parse.quote(email)}"
+    )
+
+    subject, html, text = build_password_reset_email(
+        webui_name=webui_name,
+        recipient=email,
+        reset_link=reset_link,
+        ttl_minutes=max(1, round(ttl_seconds / 60)),
+    )
+    await run_in_threadpool(send_email, email, subject, html, text)
+
+    PasswordResetRequests.upsert_for_user(
+        user_id=user_id,
+        email=email,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        last_sent_at=now,
+        db=db,
+    )
+
     return _get_duration_seconds(EMAIL_VERIFICATION_RESEND_COOLDOWN, 60)
+
+
+def _validate_password_reset_token(
+    token: str, email: Optional[str], db: Session
+) -> dict:
+    """
+    Validate that the supplied token is well-formed, matches the stored hash,
+    and has not expired/been used/revoked. Returns a payload with metadata
+    needed by callers (email, user_id, expires_at).
+    """
+    try:
+        payload = decode_token(token)
+    except Exception:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_TOKEN
+        )
+
+    if payload.get("purpose") != "password_reset":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_TOKEN
+        )
+
+    token_email = payload.get("email")
+    token_user_id = payload.get("id")
+
+    if email and token_email and email.lower() != token_email.lower():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="The reset link email does not match the provided email.",
+        )
+
+    token_hash = hash_verification_token(token)
+    record = PasswordResetRequests.get_by_token_hash(token_hash, db=db)
+    if not record:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_TOKEN
+        )
+
+    now = int(time.time())
+    if record.used_at:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.LINK_ALREADY_USED
+        )
+    if record.revoked_at:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="This reset link has been revoked."
+        )
+    if record.expires_at < now:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.LINK_EXPIRED
+        )
+
+    # Ensure email alignment with record to prevent token reuse across accounts
+    if email and record.email.lower() != email.lower():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="The reset link does not belong to this email address.",
+        )
+
+    return {
+        "email": record.email,
+        "user_id": record.user_id or token_user_id,
+        "expires_at": record.expires_at,
+        "token_hash": token_hash,
+    }
 
 ############################
 # GetSessionUser
@@ -812,6 +949,134 @@ async def signin(
     else:
         raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
 
+
+@router.post("/password-reset/request")
+async def request_password_reset(
+    request: Request,
+    form_data: PasswordResetRequestForm,
+    db: Session = Depends(get_session),
+):
+    email = form_data.email.strip().lower()
+    if not validate_email_format(email):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_EMAIL_FORMAT
+        )
+
+    client_ip = request.client.host if request.client else "unknown"
+    if password_reset_email_rate_limiter.is_limited(email) or password_reset_ip_rate_limiter.is_limited(
+        client_ip
+    ):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
+        )
+
+    user = Users.get_user_by_email(email, db=db)
+    if user:
+        try:
+            await _issue_password_reset_email(
+                request=request,
+                email=email,
+                user_id=user.id,
+                webui_name=request.app.state.WEBUI_NAME,
+                db=db,
+            )
+            # Avoid logging full email to reduce PII in logs; user_id + ip is enough for audits.
+            log.info(f"Password reset requested for user_id={user.id}, ip={client_ip}")
+        except Exception as err:
+            log.error(f"Password reset request error: {err}")
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=ERROR_MESSAGES.EMAIL_DELIVERY_FAILED,
+            )
+    else:
+        # Do not reveal whether an email exists (prevents user enumeration).
+        log.info(f"Password reset requested for unknown email, ip={client_ip}")
+
+    return {
+        "message": "If we found an account for that email, you will receive password reset instructions shortly."
+    }
+
+
+@router.get("/password-reset/validate")
+async def validate_password_reset(
+    request: Request,
+    token: str,
+    email: Optional[str] = None,
+    db: Session = Depends(get_session),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    if password_reset_validate_rate_limiter.is_limited(client_ip):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
+        )
+
+    validation = _validate_password_reset_token(token, email, db)
+    return {
+        "valid": True,
+        "expires_at": validation["expires_at"],
+    }
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    request: Request,
+    form_data: PasswordResetConfirmForm,
+    db: Session = Depends(get_session),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    if password_reset_confirm_rate_limiter.is_limited(client_ip):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
+        )
+
+    validation = _validate_password_reset_token(
+        form_data.token, form_data.email, db=db
+    )
+
+    try:
+        validate_password(form_data.password)
+    except Exception as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    user_id = validation.get("user_id")
+    email = validation.get("email")
+
+    if not user_id and email:
+        user = Users.get_user_by_email(email, db=db)
+        user_id = user.id if user else None
+
+    if not user_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.INVALID_TOKEN,
+        )
+
+    hashed = get_password_hash(form_data.password)
+    updated = Auths.update_user_password_by_id(user_id, hashed, db=db)
+    if not updated:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ERROR_MESSAGES.INTERNAL_SERVER_ERROR,
+        )
+
+    PasswordResetRequests.mark_as_used(
+        validation["token_hash"], used_at=int(time.time()), db=db
+    )
+
+    log.info(f"Password reset completed for user_id={user_id}, ip={client_ip}")
+
+    try:
+        subject, html, text = build_password_reset_confirmation_email(
+            request.app.state.WEBUI_NAME, validation["email"]
+        )
+        await run_in_threadpool(send_email, validation["email"], subject, html, text)
+    except Exception as err:
+        log.error(f"Password reset confirmation email failed: {err}")
+
+    return {"message": "Password updated successfully."}
 
 ############################
 # SignUp

@@ -119,6 +119,9 @@ class ERROR_MESSAGES(str, Enum):
     EMAIL_VERIFICATION_MAX_ATTEMPTS = (
         "Too many invalid attempts. Please request a new verification code."
     )
+
+    LINK_EXPIRED = "This link has expired. Please request a new one and try again."
+    LINK_ALREADY_USED = "This link has already been used. Please request a fresh password reset."
     EMAIL_VERIFICATION_RESEND_COOLDOWN = (
         "Please wait before requesting another verification code."
     )

@@ -370,6 +370,74 @@ export const userSignIn = async (email: string, password: string) => {
 	return res;
 };
 
+export const requestPasswordResetEmail = async (email: string) => {
+	let error = null;
+
+	const response = await fetch(`${WEBUI_API_BASE_URL}/auths/password-reset/request`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({ email: email.trim() })
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			error = err?.detail ?? err;
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return response;
+};
+
+export const resetPasswordWithToken = async (token: string, password: string, email?: string) => {
+	let error = null;
+
+	const payload: { token: string; password: string; email?: string } = {
+		token: token.trim(),
+		password: password
+	};
+	if (email) {
+		payload.email = email.trim();
+	}
+
+	const response = await fetch(`${WEBUI_API_BASE_URL}/auths/password-reset/confirm`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify(payload)
+	})
+		.then(async (res) => {
+			let data: any = null;
+			try {
+				data = await res.json();
+			} catch (err) {
+				// backend might not be implemented yet
+			}
+			if (!res.ok) throw data || { detail: 'Unable to reset password.' };
+			return data;
+		})
+		.catch((err) => {
+			console.error(err);
+			error = err?.detail ?? err;
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return response;
+};
+
 export const userSignUp = async (
 	name: string,
 	email: string,

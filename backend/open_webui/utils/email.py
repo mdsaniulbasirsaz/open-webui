@@ -75,6 +75,73 @@ def build_signup_verification_email(
     return subject, html, text
 
 
+def build_password_reset_email(
+    webui_name: str, recipient: str, reset_link: str, ttl_minutes: int
+) -> tuple[str, str, str]:
+    subject = f"Reset your {webui_name} password"
+    html = _load_template("reset_password.html").format(
+        webui_name=webui_name,
+        recipient=recipient,
+        ttl_minutes=ttl_minutes,
+        reset_link=reset_link,
+    )
+    text = (
+        f"{webui_name} password reset\n\n"
+        f"Use the link below to reset your password:\n{reset_link}\n"
+        f"This link expires in {ttl_minutes} minutes.\n\n"
+        "If you did not request this, you can ignore this email."
+    )
+    return subject, html, text
+
+
+def build_password_reset_confirmation_email(
+    webui_name: str, recipient: str
+) -> tuple[str, str, str]:
+    subject = f"Your {webui_name} password was changed"
+    html = f"""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Password changed</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f6f7fb;font-family:Arial, sans-serif;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+      <tr>
+        <td style="padding:32px 16px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.08);">
+            <tr>
+              <td style="padding:28px 28px 8px 28px;">
+                <h1 style="margin:0;font-size:20px;color:#121826;">Your password was updated</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 20px 28px;color:#4b5563;font-size:14px;line-height:1.5;">
+                <p style="margin:12px 0 0 0;">Hi, {recipient}. This is a confirmation that your {webui_name} account password was changed just now.</p>
+                <p style="margin:12px 0 0 0;">If you didn’t make this change, reset your password again immediately or contact an administrator.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 24px 28px;color:#9ca3af;font-size:12px;">
+                Thanks,<br />{webui_name}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+""".strip()
+    text = (
+        f"Your {webui_name} password was updated.\n\n"
+        "If you did not make this change, please reset your password again immediately "
+        "or contact an administrator."
+    )
+    return subject, html, text
+
+
 def send_email(to_email: str, subject: str, html: str, text: str) -> None:
     if not SMTP_HOST:
         raise ValueError("SMTP_HOST is not configured")

@@ -451,6 +451,9 @@ EMAIL_VERIFICATION_LINK_BASE_URL = os.environ.get(
     "EMAIL_VERIFICATION_LINK_BASE_URL", ""
 )
 
+PASSWORD_RESET_TOKEN_TTL = os.environ.get("PASSWORD_RESET_TOKEN_TTL", "")
+PASSWORD_RESET_LINK_BASE_URL = os.environ.get("PASSWORD_RESET_LINK_BASE_URL", "")
+
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = os.environ.get("SMTP_PORT", "")
 try:
