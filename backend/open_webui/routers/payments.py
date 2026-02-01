@@ -1088,10 +1088,26 @@ async def list_pricing_plans():
             plan_id="pro",
             name="Pro",
             features="Advanced Features",
-            amount=99,
-            currency="USD",
+            amount=24270,
+            currency="BDT",
             period="/ month",
         ),
+        PricingPlan(
+           plan_id="go",
+            name="Go",
+            features="Keep Chatting With Expanded Access",
+            amount=999,
+            currency="BDT",
+            period="/ month", 
+        ),
+        PricingPlan(
+           plan_id="plus",
+            name="Plus",
+            features="Do more with advanced intelligence",
+            amount=2420,
+            currency="BDT",
+            period="/ month", 
+        )
     ]
 
     return PricingPlansResponse(data=plans)

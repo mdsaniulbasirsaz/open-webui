@@ -150,8 +150,8 @@
 	$: transactionDetails = [
 		{ label: 'Payment method', value: transaction.payment_method },
 		{ label: 'Paid date', value: transaction.paid_date, format: 'date' },
-		{ label: 'Transaction ID', value: transaction.transaction_id },
-		{ label: 'Invoice/Voucher ID', value: transaction.invoice_id }
+		{ label: 'Payment ID', value: transaction.transaction_id },
+		{ label: 'Invoice ID', value: transaction.invoice_id }
 	];
 
   const planCta = { label: 'Manage Plan', href: '/pricing' };
@@ -563,10 +563,10 @@
 						item.label === 'Paid date' && 'bg-amber-50 border-amber-200 text-amber-900'
 					}
 					${
-						item.label === 'Transaction ID' && 'bg-green-50 border-green-200 text-green-900'
+						item.label === 'Payment ID' && 'bg-green-50 border-green-200 text-green-900'
 					}
 					${
-						item.label === 'Invoice/Voucher ID' && 'bg-purple-50 border-purple-200 text-purple-900'
+						item.label === 'Invoice ID' && 'bg-purple-50 border-purple-200 text-purple-900'
 					}
 					dark:bg-opacity-10 dark:border-opacity-30`}
 				>
