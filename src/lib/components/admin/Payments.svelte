@@ -220,7 +220,6 @@
 		{ value: 'success', label: 'Success' },
 		{ value: 'failed', label: 'Failed' },
 		{ value: 'canceled', label: 'Canceled' },
-		{ value: 'unknown', label: 'Unknown' }
 	];
 
 	const numberFormatter = new Intl.NumberFormat('en-US', {
@@ -983,10 +982,10 @@
 					{$i18n.t('Payment Dashboard')}
 				</h1>
 				<div class="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-					<p>{$i18n.t('Track subscription health, revenue, and customers at a glance.')}</p>
+					<p>{$i18n.t('Track revenue, and customers at a glance.')}</p>
 					<div class="flex items-center gap-2 text-xs">
 						<span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-						<span>{$i18n.t('Updated 2 hours ago')}</span>
+						<span>{$i18n.t('Updated One minute ago') }</span>
 					</div>
 				</div>
 			</div>
@@ -1009,18 +1008,12 @@
 					{/each}
 				</div>
 				<button
-					class="inline-flex items-center rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
+					class="inline-flex items-center rounded-full border border-gray-200 bg-[#92278f] px-5 py-2 text-xs font-semibold text-white shadow-sm transition hover:border-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-200"
 					type="button"
 					on:click={handleExport}
 					disabled={exportLoading}
 				>
 					{$i18n.t(exportLoading ? 'Exporting' : 'Export')}
-				</button>
-				<button
-					class="inline-flex items-center rounded-full bg-[rgba(146,39,143,1)] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:opacity-90"
-					type="button"
-				>
-					{$i18n.t('Create invoice')}
 				</button>
 			</div>
 		</div>
@@ -1177,7 +1170,7 @@
 			</article>
 			<article class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">
 				<div class="text-xs font-medium text-gray-500 dark:text-gray-400">
-					{$i18n.t('Active subscriptions')}
+					{$i18n.t('Total Completed Payments')}
 				</div>
 				<div class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
 					{rangeKpis.active_subscriptions}
@@ -1598,12 +1591,13 @@
 					{$i18n.t('Subscription status and recent activity')}
 				</p>
 			</div>
-			<button
+			<a
 				class="text-xs font-semibold text-[rgba(146,39,143,1)] transition hover:opacity-80"
 				type="button"
+				href="/admin/users/overview"
 			>
 				{$i18n.t('Manage users')}
-			</button>
+			</a>
 		</div>
 		<div class="relative mt-4 overflow-x-auto">
 			<table class="min-w-[760px] w-full text-sm">
