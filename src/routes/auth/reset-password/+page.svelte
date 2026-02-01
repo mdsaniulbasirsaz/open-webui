@@ -21,37 +21,35 @@
   $: token = $page.url.searchParams.get('token') ?? '';
   $: emailFromUrl = $page.url.searchParams.get('email') ?? '';
 
-  const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
+  const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 
   let requirementCopy = {
     length: '',
     upper: '',
     lower: '',
-    digit: '',
-    symbol: ''
+    digit: ''
   };
 
   $: requirementCopy = {
     length: $i18n.t('At least 8 characters'),
     upper: $i18n.t('One uppercase letter'),
     lower: $i18n.t('One lowercase letter'),
-    digit: $i18n.t('One number'),
-    symbol: $i18n.t('One symbol (e.g. !@#$)')
+    digit: $i18n.t('One number')
   };
 
   $: requirements = [
     { key: 'length', met: password.length >= 8, label: requirementCopy.length },
     { key: 'upper', met: /[A-Z]/.test(password), label: requirementCopy.upper },
     { key: 'lower', met: /[a-z]/.test(password), label: requirementCopy.lower },
-    { key: 'digit', met: /\d/.test(password), label: requirementCopy.digit },
-    { key: 'symbol', met: /[^\w\s]/.test(password), label: requirementCopy.symbol }
+    { key: 'digit', met: /\d/.test(password), label: requirementCopy.digit }
   ];
 
   $: unmetRequirements = requirements.filter((r) => !r.met).map((r) => r.label);
 
   $: meetsPattern = passwordPattern.test(password);
   $: passwordsMatch = password !== '' && password === confirmPassword;
-  $: canSubmit = Boolean(token) && meetsPattern && passwordsMatch && !loading;
+  $: canSubmit =
+    Boolean(token) && password.trim() !== '' && passwordsMatch && meetsPattern && !loading;
 
   const handleSubmit = async (event: Event) => {
     event.preventDefault();
@@ -66,7 +64,15 @@
       return;
     }
 
-    if (!canSubmit) {
+    if (!passwordsMatch) {
+      status = {
+        type: 'error',
+        text: $i18n.t("The passwords you entered don't match.")
+      };
+      return;
+    }
+
+    if (!meetsPattern) {
       status = {
         type: 'error',
         text:
@@ -90,16 +96,20 @@
       };
       setTimeout(() => goto('/auth'), 1200);
     } catch (err) {
-      const detail = err?.detail || err?.message || '';
+      const rawError = err?.detail ?? err?.message ?? err;
+      const detail =
+        (typeof rawError === 'string' && rawError) ||
+        rawError?.message ||
+        rawError?.error ||
+        '';
+      const message =
+        (typeof detail === 'string' && detail.trim()) ||
+        $i18n.t(
+          'We could not reset your password. The link may be expired or the server is unavailable.'
+        );
       status = {
         type: 'error',
-        text:
-          typeof detail === 'string'
-            ? detail
-            : detail?.message ||
-              $i18n.t(
-                'We could not reset your password. The link may be expired or the server is unavailable.'
-              )
+        text: message
       };
     } finally {
       loading = false;
@@ -214,33 +224,34 @@
             {/if}
           </div>
 
-          <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm dark:border-white/10 dark:bg-slate-900/50 md:col-span-2">
-            <div class="font-semibold text-slate-800 dark:text-slate-100">
-              {$i18n.t('Password strength')}
-            </div>
-            <div class="mt-2 grid gap-2 sm:grid-cols-2">
-              {#each requirements as requirement}
-                <div class="flex items-center gap-2 rounded-xl bg-white/70 px-3 py-2 text-slate-700 shadow-[0_8px_20px_-15px_rgba(15,23,42,0.45)] dark:bg-slate-950/60 dark:text-slate-200">
-                  <span
-                    class={`h-2 w-2 rounded-full ${
-                      requirement.met ? 'bg-emerald-500 ring-2 ring-emerald-200/60' : 'bg-slate-300 ring-2 ring-transparent dark:bg-slate-600'
-                    }`}
-                  ></span>
-                  <span class={requirement.met ? 'font-semibold text-slate-900 dark:text-white' : ''}>
-                    {requirement.label}
-                  </span>
-                </div>
-              {/each}
-            </div>
-            {#if !meetsPattern}
-              <div class="mt-3 text-xs text-rose-600 dark:text-rose-300">
-                {$i18n.t('Password must include:')} {unmetRequirements.join(', ')}
+          <div class="md:col-span-2">
+            <div
+              class="rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-700 shadow-sm dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-200"
+            >
+              <div class="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {$i18n.t('Password requirements')}
               </div>
-            {:else}
-              <div class="mt-3 text-xs text-emerald-700 dark:text-emerald-300">
-                {$i18n.t('Looking good. Keep this password private!')}
+              <div class="mt-3 flex flex-wrap gap-2">
+                {#each requirements as requirement (requirement.key)}
+                  <div class="flex items-center gap-2">
+                    <span
+                      class={`mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full font-bold ${
+                        requirement.met
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'
+                          : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300'
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {requirement.met ? '✓' : '•'}
+                    </span>
+                    <span class={requirement.met ? 'text-emerald-700 dark:text-emerald-200' : ''}>
+                      {requirement.label}
+                    </span>
+                  </div>
+                {/each}
               </div>
-            {/if}
+
+            </div>
           </div>
 
           <div class="md:col-span-2">

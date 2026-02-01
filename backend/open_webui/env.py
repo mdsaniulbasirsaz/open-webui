@@ -514,7 +514,7 @@ ENABLE_PASSWORD_VALIDATION = (
 )
 PASSWORD_VALIDATION_REGEX_PATTERN = os.environ.get(
     "PASSWORD_VALIDATION_REGEX_PATTERN",
-    "^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$",
+    "",
 )
 
 
@@ -524,7 +524,7 @@ try:
 except Exception as e:
     log.error(f"Invalid PASSWORD_VALIDATION_REGEX_PATTERN: {e}")
     PASSWORD_VALIDATION_REGEX_PATTERN = re.compile(
-        r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$"
+        r""
     )
 
 
