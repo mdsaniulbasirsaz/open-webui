@@ -9,8 +9,12 @@ from sqlalchemy.orm import Session
 
 from open_webui.internal.db import Base, get_db_context
 
-
-DEFAULT_SIGNUP_TOKEN_BUDGET = int(os.environ.get("DEFAULT_SIGNUP_TOKEN_BUDGET", ""))
+DEFAULT_SIGNUP_TOKEN_BUDGET = int(os.environ.get("DEFAULT_SIGNUP_TOKEN_BUDGET", "2000"))
+DEFAULT_PLUS_TOKEN_BUDGET = int(os.environ.get("DEFAULT_PLUS_TOKEN_BUDGET", "3000"))
+DEFAULT_PRO_TOKEN_BUDGET = int(
+    os.environ.get("DEFAULT_PRO_TOKEN_BUDGET", os.environ.get("DEFAULT_PRO_TOEKN_BUDGET", "4000"))
+)
+DEFAULT_ENTERPRISE_TOKEN_BUDGET = int(os.environ.get("DEFAULT_ENTERPRISE_TOKEN_BUDGET", "5000"))
 
 
 class TokenBudget(Base):
@@ -42,6 +46,19 @@ class TokenBudgetModel(BaseModel):
 
 
 class TokenBudgetTable:
+    def _plan_limit_tokens(self, plan_id: Optional[str]) -> Optional[int]:
+        if not plan_id:
+            return None
+
+        key = str(plan_id).strip().lower()
+        if key == "plus":
+            return DEFAULT_PLUS_TOKEN_BUDGET
+        if key == "pro":
+            return DEFAULT_PRO_TOKEN_BUDGET
+        if key == "enterprise":
+            return DEFAULT_ENTERPRISE_TOKEN_BUDGET
+        return None
+
     def ensure_default_signup_budget(
         self,
         *,
@@ -70,6 +87,27 @@ class TokenBudgetTable:
             db.commit()
             db.refresh(record)
             return TokenBudgetModel.model_validate(record)
+
+    def apply_plan_budget(
+        self,
+        *,
+        user_id: str,
+        plan_id: Optional[str],
+        created_by: str,
+        db: Optional[Session] = None,
+    ) -> Optional[TokenBudgetModel]:
+        limit_tokens = self._plan_limit_tokens(plan_id)
+        if limit_tokens is None:
+            return None
+        return self.upsert_budget(
+            user_id=user_id,
+            created_by=created_by,
+            limit_tokens=limit_tokens,
+            enabled=True,
+            timezone=None,
+            window_type="monthly",
+            db=db,
+        )
 
     def upsert_budget(
         self,

@@ -9,7 +9,11 @@ from sqlalchemy.orm import sessionmaker
 
 from open_webui.models.auths import Auths, Auth
 from open_webui.models.users import User
-from open_webui.models.token_budgets import TokenBudget, DEFAULT_SIGNUP_TOKEN_BUDGET
+from open_webui.models.token_budgets import (
+    TokenBudget,
+    TokenBudgets,
+    DEFAULT_SIGNUP_TOKEN_BUDGET,
+)
 
 
 @pytest.fixture()
@@ -80,3 +84,33 @@ def test_signup_does_not_overwrite_existing_budget(monkeypatch, db_session):
     assert budget is not None
     assert budget.limit_tokens == 9999
 
+
+def test_completed_payment_plan_updates_budget(monkeypatch, db_session):
+    monkeypatch.setenv("DEFAULT_PLUS_TOKEN_BUDGET", "3000")
+    monkeypatch.setenv("DEFAULT_PRO_TOEKN_BUDGET", "4000")
+    monkeypatch.setenv("DEFAULT_ENTERPRISE_TOKEN_BUDGET", "5000")
+
+    user = Auths.insert_new_auth(
+        "u3@example.com",
+        "hashed",
+        "User Three",
+        role="user",
+        db=db_session,
+    )
+    assert user is not None
+
+    before = db_session.query(TokenBudget).filter_by(user_id=user.id).first()
+    assert before is not None
+    assert before.limit_tokens == DEFAULT_SIGNUP_TOKEN_BUDGET
+
+    updated = TokenBudgets.apply_plan_budget(
+        user_id=user.id,
+        plan_id="plus",
+        created_by=user.id,
+        db=db_session,
+    )
+    assert updated is not None
+
+    after = db_session.query(TokenBudget).filter_by(user_id=user.id).first()
+    assert after is not None
+    assert after.limit_tokens == 3000

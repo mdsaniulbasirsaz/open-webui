@@ -29,6 +29,7 @@ from open_webui.models.payments import (
     PaymentTransactions,
     PaymentTransactionModel,
 )
+from open_webui.models.token_budgets import TokenBudgets
 from open_webui.models.users import User
 from open_webui.utils.auth import get_current_user
 from open_webui.utils.bkash_client import BkashClient
@@ -36,6 +37,21 @@ from open_webui.utils.bkash_client import BkashClient
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _maybe_update_token_budget_for_completed_payment(
+    txn: Optional[PaymentTransactionModel], db: Session
+) -> None:
+    if not txn:
+        return
+    if str(txn.status or "").strip().lower() != "completed":
+        return
+    TokenBudgets.apply_plan_budget(
+        user_id=txn.user_id,
+        plan_id=txn.plan_id,
+        created_by=txn.user_id,
+        db=db,
+    )
 
 
 def _safe_filename_component(value: str) -> str:
@@ -647,6 +663,7 @@ async def execute_bkash_payment(
         raw_response=response_data,
         db=db,
     )
+    _maybe_update_token_budget_for_completed_payment(updated, db)
 
     log.info(
         "bKash execute request_id=%s payment_id=%s status=%s",
@@ -833,6 +850,7 @@ async def _handle_bkash_callback(
             raw_response={"query": query_params, "body": payload},
             db=db,
         )
+        _maybe_update_token_budget_for_completed_payment(updated, db)
         log.info(
             "bKash callback request_id=%s payment_id=%s status=%s",
             request_id,
@@ -894,6 +912,7 @@ async def _handle_bkash_callback(
         raw_response=response_data,
         db=db,
     )
+    _maybe_update_token_budget_for_completed_payment(updated, db)
     if not updated:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
