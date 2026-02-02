@@ -2,6 +2,8 @@
 	import { getContext, onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
+	import AuthNavbar from '$lib/components/auth/AuthNavbar.svelte';
+
 	import {
 		createBkashPayment,
 		executeBkashPayment,
@@ -29,26 +31,6 @@
 				'Limited and slower image generation',
 				'Limited deep research',
 				'Limited memory and context'
-			]
-		},
-		{
-			name: 'Go',
-			planId: 'go',
-			tagline: 'Keep chatting with expanded access',
-			price: 'BDT 999',
-			amount: 999,
-			currency: 'BDT',
-			period: '/ month',
-			cta: 'Get Go',
-			featured: false,
-			note: 'This plan may include ads. Learn more',
-			features: [
-				'Everything in Free and:',
-				'More access to our flagship model GPT-5.2',
-				'More messages',
-				'More uploads',
-				'More image creation',
-				'Longer memory'
 			]
 		},
 		{
@@ -99,8 +81,8 @@
 			]
 		},
 		{
-			name: 'Business',
-			planId: 'business',
+			name: 'Enterprise',
+			planId: 'enterprise',
 			tagline: 'A secure, collaborative workspace for startups and growing businesses',
 			price: 'BDT 3030',
 			amount: 3030,
@@ -130,13 +112,12 @@
 		'Track remaining tokens and add credits from billing.'
 	];
 
-	const comparisonColumns = ['Free', 'Go', 'Plus', 'Pro', 'Business', 'Enterprise'];
+	const comparisonColumns = ['Free', 'Plus', 'Pro', 'Enterprise'];
 	const comparisonCtas = [
 		{ label: 'Get Free' },
-		{ label: 'Get Go' },
 		{ label: 'Get Plus' },
 		{ label: 'Get Pro' },
-		{ label: 'Get Business' },
+		{ label: 'Get Enterprise' },
 		{ label: 'Contact sales' }
 	];
 
@@ -351,6 +332,12 @@
 	let paymentMessage = '';
 	let paymentId = '';
 	let processingPlanId = '';
+	let isSignedIn = false;
+
+	const getAuthRedirectUrl = () => {
+		const currentUrl = `${window.location.pathname}${window.location.search}`;
+		return `/auth?redirect=${encodeURIComponent(currentUrl)}`;
+	};
 
 	const normalizeStatusValue = (status: string) => status.trim().toLowerCase();
 
@@ -474,6 +461,8 @@
 		if (!localStorage.token) {
 			paymentStatus = 'error';
 			paymentMessage = $i18n.t('Please sign in to complete payment.');
+			toast.error($i18n.t('Please sign in to complete payment.'));
+			window.location.href = getAuthRedirectUrl();
 			return;
 		}
 
@@ -521,11 +510,13 @@
 	const handleCheckout = async (plan) => {
 		if (plan.amount <= 0) {
 			toast.success($i18n.t('Free plan selected.'));
+			window.location.href = getAuthRedirectUrl(); 
 			return;
 		}
 
 		if (!localStorage.token) {
 			toast.error($i18n.t('Please sign in to continue.'));
+			window.location.href = getAuthRedirectUrl();
 			return;
 		}
 
@@ -560,6 +551,7 @@
 	};
 
 	onMount(() => {
+		isSignedIn = Boolean(localStorage.token);
 		const searchParams = new URLSearchParams(window.location.search);
 		const returnedPaymentId =
 			searchParams.get('paymentID') || searchParams.get('payment_id') || '';
@@ -574,8 +566,9 @@
 </script>
 
 <div class="fixed inset-0 z-[999] bg-white text-[#1d1424]">
+	<AuthNavbar />
 	<div class="h-full w-full overflow-y-auto">
-		<div class="mx-auto w-full max-w-8xl px-4 py-8 sm:px-6 lg:px-8">
+		<div class="mx-auto w-full max-w-8xl px-4 pb-8 pt-24 sm:px-6 lg:px-8">
 			<div
 				class="rounded-2xl bg-white p-6 shadow-[0_28px_70px_rgba(22,10,30,0.28)] sm:rounded-[28px] sm:p-10"
 			>
@@ -591,16 +584,36 @@
 								Synapse
 							</span>
 						</div>
-						<button
-							class="rounded-full bg-[rgba(146,39,143,1)] px-4 py-2 text-xs font-semibold text-white whitespace-nowrap"
-							type="button"
-							on:click={async () => {
-								localStorage.removeItem('token');
-								location.href = '/auth';
-							}}
-						>
-							{$i18n.t('Sign Out')}
-						</button>
+						<div class="flex items-center gap-2">
+							{#if isSignedIn}
+								<button
+									class="rounded-full border border-[rgba(39,20,46,0.2)] bg-white px-4 py-2 text-xs font-semibold text-[#1d1424] whitespace-nowrap"
+									type="button"
+									on:click={() => {
+										location.href = '/';
+									}}
+								>
+									{$i18n.t('Go Profile')} 
+								</button>
+							{/if}
+
+							<button
+								class="rounded-full bg-[rgba(146,39,143,1)] px-4 py-2 text-xs font-semibold text-white whitespace-nowrap"
+								type="button"
+								on:click={async () => {
+									if (isSignedIn) {
+										localStorage.removeItem('token');
+										isSignedIn = false;
+										location.href = '/auth';
+										return;
+									}
+
+									location.href = getAuthRedirectUrl();
+								}}
+							>
+								{isSignedIn ? $i18n.t('Sign Out') : $i18n.t('Sign In')}
+							</button>
+						</div>
 					</div>
 					<header class="mx-auto max-w-2xl text-center">
 						<h1 class="font-serif text-3xl text-[rgba(146,39,143,1)] font-semibold tracking-[0.02em] sm:text-4xl">
