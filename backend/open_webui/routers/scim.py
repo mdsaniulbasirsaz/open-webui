@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, ConfigDict
 
 from open_webui.models.users import Users, UserModel
+from open_webui.models.token_budgets import TokenBudgets
 from open_webui.models.groups import Groups, GroupModel
 from open_webui.utils.auth import (
     get_admin_user,
@@ -587,6 +588,12 @@ async def create_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create user",
         )
+
+    TokenBudgets.ensure_default_signup_budget(
+        user_id=user_id,
+        created_by=user_id,
+        db=db,
+    )
 
     return user_to_scim(new_user, request, db=db)
 

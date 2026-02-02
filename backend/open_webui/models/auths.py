@@ -4,6 +4,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 from open_webui.internal.db import Base, JSONField, get_db, get_db_context
+from open_webui.models.token_budgets import TokenBudgets
 from open_webui.models.users import UserModel, UserProfileImageResponse, Users
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, String, Text
@@ -114,6 +115,13 @@ class AuthsTable:
             user = Users.insert_new_user(
                 id, name, email, profile_image_url, role, oauth=oauth, db=db
             )
+
+            if user:
+                TokenBudgets.ensure_default_signup_budget(
+                    user_id=id,
+                    created_by=id,
+                    db=db,
+                )
 
             db.commit()
             db.refresh(result)

@@ -509,8 +509,7 @@
 
 	const handleCheckout = async (plan) => {
 		if (plan.amount <= 0) {
-			toast.success($i18n.t('Free plan selected.'));
-			window.location.href = getAuthRedirectUrl(); 
+			toast.success($i18n.t('Already you have free plan.')); 
 			return;
 		}
 

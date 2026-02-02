@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 from typing import Optional
@@ -7,6 +8,9 @@ from sqlalchemy import BigInteger, Boolean, Column, Integer, String, Text
 from sqlalchemy.orm import Session
 
 from open_webui.internal.db import Base, get_db_context
+
+
+DEFAULT_SIGNUP_TOKEN_BUDGET = int(os.environ.get("DEFAULT_SIGNUP_TOKEN_BUDGET", ""))
 
 
 class TokenBudget(Base):
@@ -38,6 +42,35 @@ class TokenBudgetModel(BaseModel):
 
 
 class TokenBudgetTable:
+    def ensure_default_signup_budget(
+        self,
+        *,
+        user_id: str,
+        created_by: str,
+        db: Optional[Session] = None,
+    ) -> TokenBudgetModel:
+        with get_db_context(db) as db:
+            record = db.query(TokenBudget).filter_by(user_id=user_id).first()
+            if record is not None:
+                return TokenBudgetModel.model_validate(record)
+
+            now = int(time.time())
+            record = TokenBudget(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                window_type="monthly",
+                timezone=None,
+                limit_tokens=DEFAULT_SIGNUP_TOKEN_BUDGET,
+                enabled=True,
+                created_by=created_by,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+            return TokenBudgetModel.model_validate(record)
+
     def upsert_budget(
         self,
         *,
