@@ -76,6 +76,7 @@
 	let invoiceDownloading: Record<string, boolean> = {};
 
 	let comparePlans: PricingPlan[] = [];
+	let subscriptionDetailsStatusRaw: string | null = null;
 
   // Calculate the percentage of the subscription progress
 	const calculateProgress = (startDate: string, endDate: string): number => {
@@ -225,8 +226,46 @@
 		return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 	};
 
+	const addDaysIso = (startIso: string, days: number) => {
+		if (!startIso) return '';
+		const start = new Date(startIso);
+		if (Number.isNaN(start.getTime())) return '';
+		const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+		return end.toISOString();
+	};
+
+	const estimateDurationDays = (planId?: string | null) => {
+		const normalized = (planId ?? '').trim().toLowerCase();
+		const yearlyTokens = ['year', 'annual', 'annually', 'yr', 'yearly'];
+		return yearlyTokens.some((t) => normalized.includes(t)) ? 365 : 30;
+	};
+
+	const refreshSubscriptionFromPaid = (latestPaid: PaymentTransaction) => {
+		const planId = (latestPaid.plan_id ?? '').trim().toLowerCase();
+		const plan = pricingPlans.find((p) => p.planId === planId);
+		const startIso = safeDateIso(latestPaid.created_at ?? latestPaid.updated_at ?? null);
+		const durationDays = estimateDurationDays(planId);
+		const expiryIso = addDaysIso(startIso, durationDays);
+
+		const now = Date.now();
+		const expiryMs = expiryIso ? new Date(expiryIso).getTime() : 0;
+		const derivedStatus: PlanStatus =
+			expiryMs && now > expiryMs ? 'Expired' : 'Active';
+
+		subscription = {
+			plan_name: plan?.name ?? (planId ? planId.toUpperCase() : subscription.plan_name),
+			tier: plan?.tagline ?? subscription.tier,
+			billing_cycle: plan?.period ?? subscription.billing_cycle,
+			status: derivedStatus,
+			start_date: startIso,
+			renewal_date: expiryIso,
+			expiry_date: expiryIso
+		};
+	};
+
 	const refreshFromTransactions = () => {
-		const latest = transactions[0];
+		const paidTransactions = transactions.filter((t) => normalizePaymentStatus(t.status) === 'Paid');
+		const latest = paidTransactions[0];
 		if (!latest) {
 			history = [];
 			return;
@@ -256,7 +295,7 @@
             voucher_url: invoiceId ? `/billing/voucher/${invoiceId}` : ''
         };
 
-		history = transactions.map((t) => {
+		history = paidTransactions.map((t) => {
 			const id = t.invoice_number ?? t.merchant_invoice_number ?? t.id;
 			return {
 				transaction_id: t.id,
@@ -267,6 +306,12 @@
 				invoice_id: id
 			};
 		});
+
+		// If subscription API says canceled (or is missing), keep UI derived from paid transactions only.
+		const normalizedSubStatus = (subscriptionDetailsStatusRaw ?? '').trim().toLowerCase();
+		if (!normalizedSubStatus || normalizedSubStatus === 'canceled' || normalizedSubStatus === 'cancelled') {
+			refreshSubscriptionFromPaid(latest);
+		}
 	};
 
 	const downloadInvoicePdf = async (transactionId: string, invoiceId: string) => {
@@ -321,6 +366,7 @@
 		if (!details?.has_subscription) {
 			return;
 		}
+		subscriptionDetailsStatusRaw = details.status ?? null;
 
 		const planId = (details.plan_id ?? '').trim().toLowerCase();
 		const plan = pricingPlans.find((p) => p.planId === planId);
@@ -370,9 +416,9 @@
 			viewState = 'loaded';
 			isLoading = false;
 			await fetchHistoryPage(1);
-			hasSubscription = hasSubscriptionApi || transactions.length > 0;
+			hasSubscription = hasSubscriptionApi || history.length > 0;
 
-			if (!hasSubscriptionApi && !transactions.length) {
+			if (!hasSubscriptionApi && !history.length) {
 				viewState = 'empty';
 				hasSubscription = false;
 				return;
@@ -444,8 +490,8 @@
 			  
 
               <div class="flex items-center gap-2">
-                <span class={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClass(subscription.status)}`}>
-                  {$i18n.t(subscription.status)}
+                <span class={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClass(paymentSummary.payment_status)}`}>
+                  {$i18n.t(paymentSummary.payment_status)}
                 </span>
                 <a class="text-xs font-semibold text-gray-500 transition hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200" href={planCta.href}>
                   {$i18n.t(planCta.label)}
