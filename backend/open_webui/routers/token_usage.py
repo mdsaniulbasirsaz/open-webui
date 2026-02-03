@@ -7,7 +7,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from open_webui.internal.db import get_session
-from open_webui.models.token_usage import TokenUsageEvent, TokenWindowAggregate
+from open_webui.models.token_usage import (
+    TokenUsageEvent,
+    TokenWindowAggregate,
+    TokenWindowAggregates,
+)
 from open_webui.utils.auth import get_verified_user
 from open_webui.utils.token_budget import TokenBudgetService, get_month_window
 
@@ -115,20 +119,19 @@ async def get_token_usage_summary(
 
     used_tokens = 0
     reserved_tokens = 0
+    limit_tokens = int(status.limit_tokens) if status else 0
 
-    # Prefer window aggregate when using the default monthly window
+    # Always use window aggregate when using the default monthly window
     if start is None and end is None:
-        aggregate = (
-            db.query(TokenWindowAggregate)
-            .filter(TokenWindowAggregate.user_id == user.id)
-            .filter(TokenWindowAggregate.window_start == window_start)
-            .first()
+        aggregate = TokenWindowAggregates.upsert_window(
+            user_id=user.id,
+            window_start=window_start,
+            limit_tokens_snapshot=limit_tokens,
+            db=db,
         )
-        if aggregate is not None:
-            used_tokens = int(getattr(aggregate, "used_tokens", 0) or 0)
-            reserved_tokens = int(getattr(aggregate, "reserved_tokens", 0) or 0)
-
-    if used_tokens == 0 and reserved_tokens == 0:
+        used_tokens = int(getattr(aggregate, "used_tokens", 0) or 0)
+        reserved_tokens = int(getattr(aggregate, "reserved_tokens", 0) or 0)
+    else:
         events = (
             db.query(TokenUsageEvent)
             .filter(TokenUsageEvent.user_id == user.id)
@@ -142,8 +145,6 @@ async def get_token_usage_summary(
         reserved_tokens = sum(
             int(e.total_tokens or 0) for e in events if e.status == "reserved"
         )
-
-    limit_tokens = int(status.limit_tokens) if status else 0
     remaining_tokens = (
         max(limit_tokens - used_tokens - reserved_tokens, 0) if limit_tokens else 0
     )

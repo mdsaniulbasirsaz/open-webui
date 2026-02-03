@@ -170,6 +170,20 @@ class TokenWindowAggregatesTable:
             db.refresh(record)
             return TokenWindowAggregateModel.model_validate(record)
 
+    def reset_user_usage(self, *, user_id: str, db: Optional[Session] = None) -> int:
+        with get_db_context(db) as db:
+            now = int(time.time())
+            updated = (
+                db.query(TokenWindowAggregate)
+                .filter_by(user_id=user_id)
+                .update(
+                    {"used_tokens": 0, "reserved_tokens": 0, "updated_at": now},
+                    synchronize_session=False,
+                )
+            )
+            db.commit()
+            return int(updated or 0)
+
 
 TokenUsage = TokenUsageTable()
 TokenWindowAggregates = TokenWindowAggregatesTable()

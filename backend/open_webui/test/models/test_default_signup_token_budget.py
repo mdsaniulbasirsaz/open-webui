@@ -14,6 +14,11 @@ from open_webui.models.token_budgets import (
     TokenBudgets,
     DEFAULT_SIGNUP_TOKEN_BUDGET,
 )
+from open_webui.models.token_usage import (
+    TokenUsageEvent,
+    TokenWindowAggregate,
+    TokenWindowAggregates,
+)
 
 
 @pytest.fixture()
@@ -22,6 +27,8 @@ def db_session():
     Auth.__table__.create(bind=engine)
     User.__table__.create(bind=engine)
     TokenBudget.__table__.create(bind=engine)
+    TokenUsageEvent.__table__.create(bind=engine)
+    TokenWindowAggregate.__table__.create(bind=engine)
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     session = SessionLocal()
     try:
@@ -114,3 +121,39 @@ def test_completed_payment_plan_updates_budget(monkeypatch, db_session):
     after = db_session.query(TokenBudget).filter_by(user_id=user.id).first()
     assert after is not None
     assert after.limit_tokens == 3000
+
+
+def test_plan_purchase_resets_token_window_aggregate(db_session):
+    user = Auths.insert_new_auth(
+        "u4@example.com",
+        "hashed",
+        "User Four",
+        role="user",
+        db=db_session,
+    )
+    assert user is not None
+
+    db_session.add(
+        TokenWindowAggregate(
+            id="a1",
+            user_id=user.id,
+            window_start=1,
+            limit_tokens_snapshot=2000,
+            used_tokens=123,
+            reserved_tokens=45,
+            updated_at=1,
+        )
+    )
+    db_session.commit()
+
+    agg_before = db_session.query(TokenWindowAggregate).filter_by(user_id=user.id).first()
+    assert agg_before is not None
+    assert agg_before.used_tokens == 123
+    assert agg_before.reserved_tokens == 45
+
+    TokenWindowAggregates.reset_user_usage(user_id=user.id, db=db_session)
+
+    agg_after = db_session.query(TokenWindowAggregate).filter_by(user_id=user.id).first()
+    assert agg_after is not None
+    assert agg_after.used_tokens == 0
+    assert agg_after.reserved_tokens == 0

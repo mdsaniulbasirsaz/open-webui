@@ -702,19 +702,19 @@
 		</div>
 		</section>
         {:else}
-          <section class="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center dark:border-gray-800 dark:bg-gray-900/40">
+          <section class="rounded-2xl border border-dashed border-gray-200 bg-blue-100 p-6 text-center dark:border-gray-800 dark:bg-gray-900/40">
             <div class="text-sm font-semibold text-gray-900 dark:text-white">
               {$i18n.t('No plan purchased yet.')}
             </div>
-            <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            <div class="mt-1 text-xs text-gray-700 dark:text-gray-400">
               {$i18n.t('Explore plans to get started with billing.')}
             </div>
-            <button
-              class="mt-4 inline-flex items-center rounded-full bg-black px-4 py-2 text-xs font-semibold text-white transition hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100"
-              type="button"
+            <a
+              class="mt-4 inline-flex items-center rounded-full bg-[rgba(146,39,143,1)] px-4 py-2 text-xs font-semibold text-white transition hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100"
+              href="/pricing"
             >
               {$i18n.t('Explore Plans')}
-            </button>
+            </a>
           </section>
         {/if}
       </div>

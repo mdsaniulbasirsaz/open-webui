@@ -30,6 +30,7 @@ from open_webui.models.payments import (
     PaymentTransactionModel,
 )
 from open_webui.models.token_budgets import TokenBudgets
+from open_webui.models.token_usage import TokenWindowAggregates
 from open_webui.models.users import User
 from open_webui.utils.auth import get_current_user
 from open_webui.utils.bkash_client import BkashClient
@@ -40,12 +41,21 @@ router = APIRouter()
 
 
 def _maybe_update_token_budget_for_completed_payment(
-    txn: Optional[PaymentTransactionModel], db: Session
+    txn: Optional[PaymentTransactionModel],
+    *,
+    previous_status: Optional[str],
+    db: Session,
 ) -> None:
     if not txn:
         return
-    if str(txn.status or "").strip().lower() != "completed":
+    new_status = str(txn.status or "").strip().lower()
+    old_status = str(previous_status or "").strip().lower()
+    if new_status != "completed":
         return
+    if old_status == "completed":
+        return
+
+    TokenWindowAggregates.reset_user_usage(user_id=txn.user_id, db=db)
     TokenBudgets.apply_plan_budget(
         user_id=txn.user_id,
         plan_id=txn.plan_id,
@@ -663,7 +673,9 @@ async def execute_bkash_payment(
         raw_response=response_data,
         db=db,
     )
-    _maybe_update_token_budget_for_completed_payment(updated, db)
+    _maybe_update_token_budget_for_completed_payment(
+        updated, previous_status=existing.status, db=db
+    )
 
     log.info(
         "bKash execute request_id=%s payment_id=%s status=%s",
@@ -850,7 +862,9 @@ async def _handle_bkash_callback(
             raw_response={"query": query_params, "body": payload},
             db=db,
         )
-        _maybe_update_token_budget_for_completed_payment(updated, db)
+        _maybe_update_token_budget_for_completed_payment(
+            updated, previous_status=existing.status, db=db
+        )
         log.info(
             "bKash callback request_id=%s payment_id=%s status=%s",
             request_id,
@@ -912,7 +926,9 @@ async def _handle_bkash_callback(
         raw_response=response_data,
         db=db,
     )
-    _maybe_update_token_budget_for_completed_payment(updated, db)
+    _maybe_update_token_budget_for_completed_payment(
+        updated, previous_status=existing.status, db=db
+    )
     if not updated:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
