@@ -508,14 +508,15 @@
 	};
 
 	const handleCheckout = async (plan) => {
-		if (plan.amount <= 0) {
-			toast.success($i18n.t('Already you have free plan.')); 
-			return;
-		}
 
 		if (!localStorage.token) {
 			toast.error($i18n.t('Please sign in to continue.'));
 			window.location.href = getAuthRedirectUrl();
+			return;
+		}
+
+		if (plan.amount <= 0) {
+			toast.success($i18n.t('Already you have free plan.')); 
 			return;
 		}
 
