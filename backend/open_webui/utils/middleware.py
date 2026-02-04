@@ -107,6 +107,7 @@ from open_webui.utils.code_interpreter import execute_code_jupyter
 from open_webui.utils.payload import apply_system_prompt_to_body
 from open_webui.utils.mcp.client import MCPClient
 from open_webui.utils.token_budget import TokenBudgetService
+from open_webui.utils.token_counting import estimate_text_tokens, normalize_usage_tokens
 
 
 from open_webui.config import (
@@ -2855,11 +2856,31 @@ async def process_chat_response(
                                             and getattr(request.state, "token_budget_request_id", None)
                                             and not getattr(request.state, "token_budget_finalized", False)
                                         ):
+                                            prompt_fallback = int(
+                                                getattr(request.state, "token_budget_estimate_prompt_tokens", 0) or 0
+                                            )
+                                            completion_fallback = int(
+                                                getattr(
+                                                    request.state,
+                                                    "token_budget_estimate_completion_tokens",
+                                                    0,
+                                                )
+                                                or 0
+                                            )
+                                            total_fallback = int(
+                                                getattr(request.state, "token_budget_estimate_tokens", 0) or 0
+                                            )
+                                            p, c, t = normalize_usage_tokens(
+                                                usage,
+                                                prompt_fallback=prompt_fallback,
+                                                completion_fallback=completion_fallback,
+                                                total_fallback=total_fallback,
+                                            )
                                             TokenBudgetService.finalize(
                                                 request_id=request.state.token_budget_request_id,
-                                                prompt_tokens=int(usage.get("prompt_tokens") or 0),
-                                                completion_tokens=int(usage.get("completion_tokens") or 0),
-                                                total_tokens=usage.get("total_tokens"),
+                                                prompt_tokens=p,
+                                                completion_tokens=c,
+                                                total_tokens=t,
                                                 status="success",
                                             )
                                             request.state.token_budget_finalized = True
@@ -3221,21 +3242,58 @@ async def process_chat_response(
                         # Streaming responses often don't include usage (e.g. OpenAI streams without
                         # stream_options.include_usage). If we only "release", users can avoid
                         # budget enforcement by canceling/streaming.
+                        prompt_est = int(
+                            getattr(request.state, "token_budget_estimate_prompt_tokens", 0) or 0
+                        )
+                        completion_est = int(
+                            getattr(request.state, "token_budget_estimate_completion_tokens", 0) or 0
+                        )
+                        total_est = int(
+                            getattr(
+                                request.state,
+                                "token_budget_estimate_tokens",
+                                prompt_est + completion_est,
+                            )
+                            or 0
+                        )
+                        encoding_name = str(
+                            getattr(
+                                getattr(request.app.state, "config", None),
+                                "TIKTOKEN_ENCODING_NAME",
+                                "cl100k_base",
+                            )
+                            or "cl100k_base"
+                        )
+                        completion_text = ""
+                        try:
+                            completion_text = serialize_content_blocks(content_blocks, raw=True)
+                        except Exception:
+                            completion_text = ""
+                        completion_from_content = (
+                            estimate_text_tokens(completion_text, encoding_name=encoding_name)
+                            if completion_text
+                            else 0
+                        )
+                        completion_used = (
+                            completion_from_content
+                            if completion_from_content > 0
+                            else (completion_est if completion_est > 0 else max(total_est - prompt_est, 0))
+                        )
+                        total_used = (
+                            (prompt_est + completion_used)
+                            if (prompt_est > 0 or completion_used > 0)
+                            else total_est
+                        )
                         TokenBudgetService.finalize(
                             request_id=request.state.token_budget_request_id,
-                            prompt_tokens=0,
-                            completion_tokens=int(
-                                getattr(request.state, "token_budget_estimate_tokens", 0)
-                                or 0
-                            ),
-                            total_tokens=int(
-                                getattr(request.state, "token_budget_estimate_tokens", 0)
-                                or 0
-                            ),
+                            prompt_tokens=prompt_est,
+                            completion_tokens=int(completion_used),
+                            total_tokens=int(total_used),
                             status="canceled",
                             metadata={
                                 "estimated": True,
-                                "note": "No provider usage received for stream; charged estimate.",
+                                "computed_completion_from_content": bool(completion_from_content > 0),
+                                "note": "No provider usage received for stream; charged best-effort tokens.",
                             },
                         )
                         request.state.token_budget_finalized = True

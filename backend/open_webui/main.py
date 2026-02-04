@@ -67,6 +67,7 @@ from open_webui.socket.main import (
     get_event_emitter,
     get_models_in_use,
 )
+from open_webui.utils.token_budget import TokenBudgetService
 from open_webui.routers import (
     audio,
     images,
@@ -643,6 +644,25 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(periodic_usage_pool_cleanup())
 
+    async def token_budget_reservation_sweeper():
+        interval = int(os.environ.get("TOKEN_BUDGET_SWEEP_INTERVAL_SECONDS", ""))
+        ttl = int(os.environ.get("TOKEN_BUDGET_STALE_RESERVATION_TTL_SECONDS", ""))
+        interval = max(interval, 5)
+        ttl = max(ttl, 0)
+
+        while True:
+            try:
+                await anyio.to_thread.run_sync(
+                    lambda: TokenBudgetService.sweep_stale_reservations(
+                        max_age_seconds=ttl
+                    )
+                )
+            except Exception:
+                log.exception("Token budget stale reservation sweep failed.")
+            await asyncio.sleep(interval)
+
+    app.state.token_budget_sweeper = asyncio.create_task(token_budget_reservation_sweeper())
+
     if app.state.config.ENABLE_BASE_MODELS_CACHE:
         await get_all_models(
             Request(
@@ -668,6 +688,9 @@ async def lifespan(app: FastAPI):
 
     if hasattr(app.state, "redis_task_command_listener"):
         app.state.redis_task_command_listener.cancel()
+
+    if hasattr(app.state, "token_budget_sweeper"):
+        app.state.token_budget_sweeper.cancel()
 
 
 app = FastAPI(

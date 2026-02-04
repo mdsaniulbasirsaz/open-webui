@@ -1,5 +1,7 @@
 import time
 import uuid
+import os
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -13,6 +15,15 @@ from sqlalchemy.orm import Session
 from open_webui.internal.db import get_db_context
 from open_webui.models.token_budgets import TokenBudget, TokenBudgetModel
 from open_webui.models.token_usage import TokenUsageEvent, TokenWindowAggregate
+
+log = logging.getLogger(__name__)
+
+DEFAULT_STALE_RESERVATION_TTL_SECONDS = int(
+    os.environ.get("TOKEN_BUDGET_STALE_RESERVATION_TTL_SECONDS", "")
+)
+DEFAULT_STALE_RESERVATION_SWEEP_LIMIT = int(
+    os.environ.get("TOKEN_BUDGET_STALE_RESERVATION_SWEEP_LIMIT", "")
+)
 
 
 class TokenBudgetExceededError(Exception):
@@ -186,6 +197,8 @@ class TokenBudgetService:
         user_id: str,
         request_id: str,
         estimate_tokens: int,
+        prompt_tokens_estimate: int = 0,
+        completion_tokens_estimate: int = 0,
         model_id: Optional[str] = None,
         provider: Optional[str] = None,
         route: Optional[str] = None,
@@ -198,6 +211,10 @@ class TokenBudgetService:
         Raises TokenBudgetExceededError when the reservation cannot be made.
         """
         estimate_tokens = max(int(estimate_tokens or 0), 0)
+        prompt_tokens_estimate = max(int(prompt_tokens_estimate or 0), 0)
+        completion_tokens_estimate = max(int(completion_tokens_estimate or 0), 0)
+        if estimate_tokens <= 0 and (prompt_tokens_estimate > 0 or completion_tokens_estimate > 0):
+            estimate_tokens = prompt_tokens_estimate + completion_tokens_estimate
         with get_db_context(db) as db:
             budget = db.query(TokenBudget).filter_by(user_id=user_id).first()
             if not budget or not budget.enabled:
@@ -276,8 +293,8 @@ class TokenBudgetService:
                 model_id=model_id,
                 provider=provider,
                 route=route,
-                prompt_tokens=0,
-                completion_tokens=0,
+                prompt_tokens=prompt_tokens_estimate,
+                completion_tokens=completion_tokens_estimate,
                 total_tokens=estimate_tokens,
                 status="reserved",
                 created_at=now,
@@ -473,3 +490,113 @@ class TokenBudgetService:
 
             event.status = status
             db.commit()
+
+    @staticmethod
+    def sweep_stale_reservations(
+        *,
+        max_age_seconds: int = DEFAULT_STALE_RESERVATION_TTL_SECONDS,
+        limit: int = DEFAULT_STALE_RESERVATION_SWEEP_LIMIT,
+        db: Optional[Session] = None,
+    ) -> int:
+        """
+        Converts stale reservations (status=reserved) into finalized usage to prevent
+        permanently-inflated reserved_tokens when workers crash or streams never finalize.
+
+        This charges the reservation estimate (event.total_tokens) as used tokens and marks
+        the event as canceled with metadata indicating it was swept.
+        """
+        max_age_seconds = max(int(max_age_seconds or 0), 0)
+        limit = max(int(limit or 0), 1)
+        now = int(time.time())
+        cutoff = now - max_age_seconds
+
+        with get_db_context(db) as db:
+            query = (
+                db.query(TokenUsageEvent)
+                .filter(TokenUsageEvent.status == "reserved")
+                .filter(TokenUsageEvent.created_at < cutoff)
+                .order_by(TokenUsageEvent.created_at.asc())
+                .limit(limit)
+            )
+            events = list(query.all() or [])
+            swept = 0
+
+            for event in events:
+                request_id = getattr(event, "request_id", None)
+                user_id = getattr(event, "user_id", None)
+                if not request_id or not user_id:
+                    continue
+
+                estimate_total = max(int(getattr(event, "total_tokens", 0) or 0), 0)
+                prompt_est = max(int(getattr(event, "prompt_tokens", 0) or 0), 0)
+                completion_est = max(int(getattr(event, "completion_tokens", 0) or 0), 0)
+                if completion_est <= 0 and estimate_total > 0 and prompt_est > 0:
+                    completion_est = max(estimate_total - prompt_est, 0)
+                if estimate_total <= 0:
+                    estimate_total = prompt_est + completion_est
+
+                budget = db.query(TokenBudget).filter_by(user_id=user_id).first()
+                tz_name = getattr(budget, "timezone", None) if budget else None
+                window = get_month_window(now_epoch=int(event.created_at), tz_name=tz_name)
+                TokenBudgetService._get_or_create_window_aggregate(
+                    db=db,
+                    user_id=user_id,
+                    window_start=window.window_start,
+                    limit_tokens_snapshot=int(getattr(budget, "limit_tokens", 0) or 0)
+                    if budget is not None
+                    else 0,
+                )
+
+                existing_meta = getattr(event, "metadata_", None) or {}
+                merged_meta = (
+                    {**existing_meta}
+                    if isinstance(existing_meta, dict)
+                    else {"previous_metadata": existing_meta}
+                )
+                merged_meta.update(
+                    {
+                        "estimated": True,
+                        "swept_stale_reservation": True,
+                        "stale_after_seconds": max_age_seconds,
+                    }
+                )
+
+                updated = (
+                    db.query(TokenUsageEvent)
+                    .filter(TokenUsageEvent.request_id == request_id)
+                    .filter(TokenUsageEvent.status == "reserved")
+                    .update(
+                        {
+                            TokenUsageEvent.prompt_tokens: prompt_est,
+                            TokenUsageEvent.completion_tokens: completion_est,
+                            TokenUsageEvent.total_tokens: estimate_total,
+                            TokenUsageEvent.status: "canceled",
+                            TokenUsageEvent.metadata_: merged_meta,
+                        },
+                        synchronize_session=False,
+                    )
+                )
+                if updated != 1:
+                    continue
+
+                db.query(TokenWindowAggregate).filter(
+                    and_(
+                        TokenWindowAggregate.user_id == user_id,
+                        TokenWindowAggregate.window_start == window.window_start,
+                    )
+                ).update(
+                    {
+                        TokenWindowAggregate.reserved_tokens: TokenWindowAggregate.reserved_tokens
+                        - estimate_total,
+                        TokenWindowAggregate.used_tokens: TokenWindowAggregate.used_tokens
+                        + estimate_total,
+                        TokenWindowAggregate.updated_at: now,
+                    },
+                    synchronize_session=False,
+                )
+                swept += 1
+
+            if swept:
+                db.commit()
+                log.info(f"Swept {swept} stale token reservations (cutoff={cutoff}).")
+            return int(swept)

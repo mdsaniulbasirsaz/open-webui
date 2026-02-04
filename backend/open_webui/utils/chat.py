@@ -56,6 +56,10 @@ from open_webui.utils.filter import (
 )
 
 from open_webui.utils.token_budget import TokenBudgetExceededError, TokenBudgetService
+from open_webui.utils.token_counting import (
+    estimate_openai_prompt_tokens,
+    normalize_usage_tokens,
+)
 
 from open_webui.env import GLOBAL_LOG_LEVEL, BYPASS_MODEL_ACCESS_CONTROL
 
@@ -65,7 +69,7 @@ log = logging.getLogger(__name__)
 
 
 def _estimate_tokens_from_form_data(data: dict) -> int:
-    # MVP: conservative completion estimate from known params; prompt estimate is 0.
+    # MVP: conservative completion estimate from known params (max_* tokens / num_predict).
     candidates = [
         data.get("max_tokens"),
         data.get("max_completion_tokens"),
@@ -96,12 +100,24 @@ async def generate_direct_chat_completion(
     # Always generate server-side to prevent request_id reuse bypassing token budgets.
     request_id = str(uuid.uuid4())  # Generate a unique request ID
 
-    token_budget_estimate = _estimate_tokens_from_form_data(form_data)
+    encoding_name = str(
+        getattr(getattr(request.app.state, "config", None), "TIKTOKEN_ENCODING_NAME", "cl100k_base")
+        or "cl100k_base"
+    )
+    token_budget_prompt_estimate = estimate_openai_prompt_tokens(
+        form_data, encoding_name=encoding_name
+    )
+    token_budget_completion_estimate = _estimate_tokens_from_form_data(form_data)
+    token_budget_total_estimate = (
+        int(token_budget_prompt_estimate) + int(token_budget_completion_estimate)
+    )
     try:
         budget_status = TokenBudgetService.reserve(
             user_id=user.id,
             request_id=request_id,
-            estimate_tokens=token_budget_estimate,
+            estimate_tokens=token_budget_total_estimate,
+            prompt_tokens_estimate=token_budget_prompt_estimate,
+            completion_tokens_estimate=token_budget_completion_estimate,
             model_id=form_data.get("model"),
             provider=(models.get(form_data.get("model")) or {}).get("owned_by"),
             route="chat:completion:direct",
@@ -113,7 +129,9 @@ async def generate_direct_chat_completion(
         if budget_status is not None:
             request.state.token_budget_active = True
             request.state.token_budget_request_id = request_id
-            request.state.token_budget_estimate_tokens = token_budget_estimate
+            request.state.token_budget_estimate_prompt_tokens = token_budget_prompt_estimate
+            request.state.token_budget_estimate_completion_tokens = token_budget_completion_estimate
+            request.state.token_budget_estimate_tokens = token_budget_total_estimate
     except TokenBudgetExceededError as e:
         # Return stable JSON payload for UI consumption.
         raise HTTPException(
@@ -177,15 +195,17 @@ async def generate_direct_chat_completion(
                                 ):
                                     if usage:
                                         try:
+                                            p, c, t = normalize_usage_tokens(
+                                                usage,
+                                                prompt_fallback=token_budget_prompt_estimate,
+                                                completion_fallback=token_budget_completion_estimate,
+                                                total_fallback=token_budget_total_estimate,
+                                            )
                                             TokenBudgetService.finalize(
                                                 request_id=request_id,
-                                                prompt_tokens=int(
-                                                    usage.get("prompt_tokens") or 0
-                                                ),
-                                                completion_tokens=int(
-                                                    usage.get("completion_tokens") or 0
-                                                ),
-                                                total_tokens=usage.get("total_tokens"),
+                                                prompt_tokens=p,
+                                                completion_tokens=c,
+                                                total_tokens=t,
                                                 status="success",
                                             )
                                         except Exception:
@@ -196,7 +216,11 @@ async def generate_direct_chat_completion(
                                         try:
                                             TokenBudgetService.finalize(
                                                 request_id=request_id,
-                                                total_tokens=int(token_budget_estimate),
+                                                prompt_tokens=int(token_budget_prompt_estimate or 0),
+                                                completion_tokens=int(
+                                                    token_budget_completion_estimate or 0
+                                                ),
+                                                total_tokens=int(token_budget_total_estimate),
                                                 status="canceled",
                                                 metadata={
                                                     "estimated": True,
@@ -259,15 +283,17 @@ async def generate_direct_chat_completion(
                     ):
                         if last_usage:
                             try:
+                                p, c, t = normalize_usage_tokens(
+                                    last_usage,
+                                    prompt_fallback=token_budget_prompt_estimate,
+                                    completion_fallback=token_budget_completion_estimate,
+                                    total_fallback=token_budget_total_estimate,
+                                )
                                 TokenBudgetService.finalize(
                                     request_id=request_id,
-                                    prompt_tokens=int(
-                                        last_usage.get("prompt_tokens") or 0
-                                    ),
-                                    completion_tokens=int(
-                                        last_usage.get("completion_tokens") or 0
-                                    ),
-                                    total_tokens=last_usage.get("total_tokens"),
+                                    prompt_tokens=p,
+                                    completion_tokens=c,
+                                    total_tokens=t,
                                     status="success",
                                 )
                             except Exception:
@@ -278,7 +304,9 @@ async def generate_direct_chat_completion(
                             try:
                                 TokenBudgetService.finalize(
                                     request_id=request_id,
-                                    total_tokens=int(token_budget_estimate),
+                                    prompt_tokens=int(token_budget_prompt_estimate or 0),
+                                    completion_tokens=int(token_budget_completion_estimate or 0),
+                                    total_tokens=int(token_budget_total_estimate),
                                     status="canceled",
                                     metadata={
                                         "estimated": True,
@@ -340,11 +368,17 @@ async def generate_direct_chat_completion(
             usage = (res or {}).get("usage") or {}
             if usage:
                 try:
+                    p, c, t = normalize_usage_tokens(
+                        usage,
+                        prompt_fallback=token_budget_prompt_estimate,
+                        completion_fallback=token_budget_completion_estimate,
+                        total_fallback=token_budget_total_estimate,
+                    )
                     TokenBudgetService.finalize(
                         request_id=request_id,
-                        prompt_tokens=int(usage.get("prompt_tokens") or 0),
-                        completion_tokens=int(usage.get("completion_tokens") or 0),
-                        total_tokens=usage.get("total_tokens"),
+                        prompt_tokens=p,
+                        completion_tokens=c,
+                        total_tokens=t,
                         status="success",
                     )
                 except Exception:
@@ -353,7 +387,9 @@ async def generate_direct_chat_completion(
                 try:
                     TokenBudgetService.finalize(
                         request_id=request_id,
-                        total_tokens=int(token_budget_estimate),
+                        prompt_tokens=int(token_budget_prompt_estimate or 0),
+                        completion_tokens=int(token_budget_completion_estimate or 0),
+                        total_tokens=int(token_budget_total_estimate),
                         status="success",
                         metadata={
                             "estimated": True,
@@ -475,12 +511,24 @@ async def generate_chat_completion(
         # Always generate server-side to prevent client-controlled request_id reuse.
         token_budget_request_id = str(uuid.uuid4())
 
-        token_budget_estimate = _estimate_tokens_from_form_data(form_data)
+        encoding_name = str(
+            getattr(getattr(request.app.state, "config", None), "TIKTOKEN_ENCODING_NAME", "cl100k_base")
+            or "cl100k_base"
+        )
+        token_budget_prompt_estimate = estimate_openai_prompt_tokens(
+            form_data, encoding_name=encoding_name
+        )
+        token_budget_completion_estimate = _estimate_tokens_from_form_data(form_data)
+        token_budget_total_estimate = (
+            int(token_budget_prompt_estimate) + int(token_budget_completion_estimate)
+        )
         try:
             budget_status = TokenBudgetService.reserve(
                 user_id=user.id,
                 request_id=token_budget_request_id,
-                estimate_tokens=token_budget_estimate,
+                estimate_tokens=token_budget_total_estimate,
+                prompt_tokens_estimate=token_budget_prompt_estimate,
+                completion_tokens_estimate=token_budget_completion_estimate,
                 model_id=form_data.get("model"),
                 provider=model.get("owned_by"),
                 route="chat:completion",
@@ -493,7 +541,9 @@ async def generate_chat_completion(
             if budget_status is not None:
                 request.state.token_budget_active = True
                 request.state.token_budget_request_id = token_budget_request_id
-                request.state.token_budget_estimate_tokens = token_budget_estimate
+                request.state.token_budget_estimate_prompt_tokens = token_budget_prompt_estimate
+                request.state.token_budget_estimate_completion_tokens = token_budget_completion_estimate
+                request.state.token_budget_estimate_tokens = token_budget_total_estimate
                 # Preserve for internal traces/debugging only.
                 form_data.setdefault("metadata", {})["request_id"] = token_budget_request_id
         except TokenBudgetExceededError as e:
@@ -546,11 +596,17 @@ async def generate_chat_completion(
                 converted = convert_response_ollama_to_openai(response)
                 if getattr(request.state, "token_budget_active", False):
                     usage = (converted or {}).get("usage") or {}
+                    p, c, t = normalize_usage_tokens(
+                        usage,
+                        prompt_fallback=token_budget_prompt_estimate,
+                        completion_fallback=token_budget_completion_estimate,
+                        total_fallback=token_budget_total_estimate,
+                    )
                     TokenBudgetService.finalize(
                         request_id=token_budget_request_id,
-                        prompt_tokens=int(usage.get("prompt_tokens") or 0),
-                        completion_tokens=int(usage.get("completion_tokens") or 0),
-                        total_tokens=usage.get("total_tokens"),
+                        prompt_tokens=p,
+                        completion_tokens=c,
+                        total_tokens=t,
                         status="success",
                     )
                 return converted
@@ -575,18 +631,30 @@ async def generate_chat_completion(
             ):
                 usage = (result or {}).get("usage") or {}
                 if usage:
+                    p, c, t = normalize_usage_tokens(
+                        usage,
+                        prompt_fallback=token_budget_prompt_estimate,
+                        completion_fallback=token_budget_completion_estimate,
+                        total_fallback=token_budget_total_estimate,
+                    )
                     TokenBudgetService.finalize(
                         request_id=token_budget_request_id,
-                        prompt_tokens=int(usage.get("prompt_tokens") or 0),
-                        completion_tokens=int(usage.get("completion_tokens") or 0),
-                        total_tokens=usage.get("total_tokens"),
+                        prompt_tokens=p,
+                        completion_tokens=c,
+                        total_tokens=t,
                         status="success",
                     )
                 else:
                     TokenBudgetService.finalize(
                         request_id=token_budget_request_id,
-                        total_tokens=int(token_budget_estimate),
+                        prompt_tokens=int(token_budget_prompt_estimate or 0),
+                        completion_tokens=int(token_budget_completion_estimate or 0),
+                        total_tokens=int(token_budget_total_estimate),
                         status="success",
+                        metadata={
+                            "estimated": True,
+                            "note": "No provider usage received for non-stream; charged estimate.",
+                        },
                     )
             return result
 
