@@ -91,12 +91,14 @@
 	import Navbar from '$lib/components/chat/Navbar.svelte';
 	import ChatControls from './ChatControls.svelte';
 	import EventConfirmDialog from '../common/ConfirmDialog.svelte';
+	import Modal from '$lib/components/common/Modal.svelte';
 	import Placeholder from './Placeholder.svelte';
 	import NotificationToast from '../NotificationToast.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
+	import XMark from '$lib/components/icons/XMark.svelte';
 
 	export let chatIdProp = '';
 
@@ -121,6 +123,21 @@
 	let eventConfirmationInputPlaceholder = '';
 	let eventConfirmationInputValue = '';
 	let eventCallback = null;
+
+	let showTokenBudgetExceededModal = false;
+
+	const isTokenBudgetExceededNotice = (value) => {
+		if (typeof value !== 'string') return false;
+		return (
+			value.includes('TOKEN_BUDGET_EXCEEDED') ||
+			value.includes('Monthly token limit exceeded') ||
+			(value.includes('429') && value.includes('token') && value.includes('exceeded'))
+		);
+	};
+
+	const openTokenBudgetExceededModal = () => {
+		showTokenBudgetExceededModal = true;
+	};
 
 	let chatIdUnsubscriber: Unsubscriber | undefined;
 
@@ -384,6 +401,15 @@
 					message.embeds = data.embeds;
 				} else if (type === 'chat:message:error') {
 					message.error = data.error;
+					const raw =
+						typeof data?.error?.content === 'string'
+							? data.error.content
+							: typeof data?.error === 'string'
+								? data.error
+								: null;
+					if (raw && isTokenBudgetExceededNotice(raw)) {
+						openTokenBudgetExceededModal();
+					}
 				} else if (type === 'chat:message:follow_ups') {
 					message.followUps = data.follow_ups;
 
@@ -429,6 +455,14 @@
 				} else if (type === 'notification') {
 					const toastType = data?.type ?? 'info';
 					const toastContent = data?.content ?? '';
+
+					if (
+						(toastType === 'warning' || toastType === 'error') &&
+						isTokenBudgetExceededNotice(toastContent)
+					) {
+						openTokenBudgetExceededModal();
+						return;
+					}
 
 					if (toastType === 'success') {
 						toast.success(toastContent);
@@ -2483,6 +2517,48 @@
 		eventCallback(false);
 	}}
 />
+
+<Modal bind:show={showTokenBudgetExceededModal} size="sm" autoclose>
+	<div class="relative  rounded-lg p-6 text-center">
+		<a 
+			href="/"
+			class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" 
+			on:click={() => (showTokenBudgetExceededModal = false)}
+		>
+			<XMark className="size-5" />
+		</a>
+
+		<div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+			<svg class="h-14 w-14 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+			</svg>
+		</div>
+
+		<h3 class="mb-2 text-xl font-semibold text-gray-900 dark:text-white">
+			{$i18n.t('Monthly Limit Reached')}
+		</h3>
+		<p class="mb-6 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+			{$i18n.t("You've used all your tokens. Upgrade your plan.")}
+		</p>
+
+		<div class="flex flex-col gap-2">
+			<a 
+				href="/pricing"
+				class="inline-flex items-center justify-center w-full rounded-full bg-[#92278f] px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#92278f] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
+				on:click={() => (showTokenBudgetExceededModal = false)}
+			>
+				{$i18n.t('Upgrade My Plan')}
+			</a>
+			<a 
+				href="/"
+				class="w-full rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-100 hover:text-indigo-700 focus:z-10 focus:outline-none focus:ring-4 focus:ring-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+				on:click={() => (showTokenBudgetExceededModal = false)}
+			>
+				{$i18n.t('Maybe Later')}
+			</a>
+		</div>
+	</div>
+</Modal>
 
 <div
 	class="h-screen max-h-[100dvh] transition-width duration-200 ease-in-out {$showSidebar
